@@ -64,6 +64,7 @@ jobs:
 
       - name: Run tests
         run: |
+          mkdir -p path/to
           pytest \
             -vrx \
             --cov=safezip \
