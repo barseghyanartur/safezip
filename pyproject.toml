@@ -157,6 +157,9 @@ addopts = [
 ]
 testpaths = [
     "src/safezip/tests",
+    ".",
+    "**/*.rst",
+    "**/*.md",
 ]
 pythonpath = ["src"]
 norecursedirs = [".git", ".tox"]

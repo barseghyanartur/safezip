@@ -15,25 +15,25 @@ build:
 	docker compose build
 
 # List all available environments in the Docker container
-list-envs: docker-build
+list-envs: build
 	docker compose run --rm tox -l
 
-test: docker-build
+test: build
 	docker compose run --rm tox
 
 # Usage: make docker-test-env ENV=py312
-test-env: docker-build
+test-env: build
 	@if [ -z "$(ENV)" ]; then \
 		echo "Usage: make docker-test-env ENV=py312"; \
 		exit 1; \
 	fi
 	docker compose run --rm tox -e $(ENV)
 
-shell: docker-build
+shell: build
 	docker compose run --rm --entrypoint bash tox
 
 # Usage: make docker-shell-env ENV=py312
-shell-env: docker-build
+shell-env: build
 	@if [ -z "$(ENV)" ]; then \
 		echo "Usage: make docker-shell-env ENV=py312"; \
 		exit 1; \
