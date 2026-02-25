@@ -82,34 +82,37 @@ Quick start
 
 Drop-in replacement for the common ``zipfile`` extraction pattern:
 
+.. pytestfixture: file_zip
 .. code-block:: python
-    :name: safe_extract
+    :name: test_safe_extract
 
     from safezip import safe_extract
 
-    safe_extract("upload.zip", "/var/uploads/extracted/")
+    safe_extract("path/to/file.zip", "/var/uploads/extracted/")
 
 Or use the ``SafeZipFile`` context manager for more control:
 
+.. pytestfixture: file_zip
 .. code-block:: python
-    :name: safe_zipfile
+    :name: test_safe_zipfile
 
     from safezip import SafeZipFile
 
-    with SafeZipFile("upload.zip") as zf:
+    with SafeZipFile("path/to/file.zip") as zf:
         print(zf.namelist())
         zf.extractall("/var/uploads/extracted/")
 
 Custom limits
 =============
 
+.. pytestfixture: file_zip
 .. code-block:: python
-    :name: custom_limits
+    :name: test_custom_limits
 
     from safezip import SafeZipFile
 
     with SafeZipFile(
-        "upload.zip",
+        "path/to/file.zip",
         max_file_size=100 * 1024 * 1024,   # 100 MiB per member
         max_total_size=500 * 1024 * 1024,  # 500 MiB total
         max_files=1_000,
@@ -121,16 +124,17 @@ Custom limits
 Security event monitoring
 =========================
 
+.. pytestfixture: file_zip
 .. code-block:: python
-    :name: security_event_monitoring
+    :name: test_security_event_monitoring
 
     from safezip import SafeZipFile, SecurityEvent
 
     def my_monitor(event: SecurityEvent) -> None:
         print(f"[safezip] {event.event_type} archive={event.archive_hash}")
 
-    with SafeZipFile("upload.zip", on_security_event=my_monitor) as zf:
-        zf.extractall("/output/")
+    with SafeZipFile("path/to/file.zip", on_security_event=my_monitor) as zf:
+        zf.extractall("/var/uploads/output/")
 
 Environment variable overrides
 ==============================
