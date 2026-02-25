@@ -9,7 +9,7 @@ import pytest
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
-__license__ = "Apache-2.0"
+__license__ = "MIT"
 __all__ = (
     "zipslip_archive",
     "absolute_path_archive",
