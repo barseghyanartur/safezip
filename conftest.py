@@ -1,5 +1,22 @@
-"""Root conftest.py - no fixtures needed at project level."""
+"""
+Pytest fixtures for documentation testing.
 
-__author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
-__copyright__ = "2026 Artur Barseghyan"
-__license__ = "MIT"
+DO NOT ADD OTHER FIXTURES HERE.
+"""
+
+import io
+import zipfile
+from pathlib import Path
+
+import pytest
+
+
+@pytest.fixture()
+def file_zip(tmp_path):
+    """A valid ZIP file named file.zip."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("hello.txt", b"Hello, world!\n")
+    p = Path("path/to") / "file.zip"
+    p.write_bytes(buf.getvalue())
+    return p
