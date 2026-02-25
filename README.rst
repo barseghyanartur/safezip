@@ -88,7 +88,7 @@ Drop-in replacement for the common ``zipfile`` extraction pattern:
 
     from safezip import safe_extract
 
-    safe_extract("path/to/file.zip", "/var/uploads/extracted/")
+    safe_extract("path/to/file.zip", "/var/files/extracted/")
 
 Or use the ``SafeZipFile`` context manager for more control:
 
@@ -100,7 +100,7 @@ Or use the ``SafeZipFile`` context manager for more control:
 
     with SafeZipFile("path/to/file.zip") as zf:
         print(zf.namelist())
-        zf.extractall("/var/uploads/extracted/")
+        zf.extractall("/var/files/extracted/")
 
 Custom limits
 =============
@@ -119,7 +119,7 @@ Custom limits
         max_per_member_ratio=50.0,
         max_total_ratio=50.0,
     ) as zf:
-        zf.extractall("/var/uploads/extracted/")
+        zf.extractall("/var/files/extracted/")
 
 Security event monitoring
 =========================
@@ -134,7 +134,7 @@ Security event monitoring
         print(f"[safezip] {event.event_type} archive={event.archive_hash}")
 
     with SafeZipFile("path/to/file.zip", on_security_event=my_monitor) as zf:
-        zf.extractall("/var/uploads/output/")
+        zf.extractall("/var/files/extracted/")
 
 Environment variable overrides
 ==============================
