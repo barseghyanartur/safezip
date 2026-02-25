@@ -1,6 +1,6 @@
 [project]
 name = "safezip"
-description = "Hardened ZIP extraction for Python — secure by default."
+description = "Hardened ZIP extraction for Python - secure by default."
 readme = "README.rst"
 version = "0.1"
 requires-python = ">=3.10"

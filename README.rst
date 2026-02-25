@@ -1,7 +1,7 @@
 =======
 safezip
 =======
-Hardened ZIP extraction for Python — secure by default.
+Hardened ZIP extraction for Python - secure by default.
 
 .. image:: https://img.shields.io/pypi/v/safezip.svg
    :target: https://pypi.python.org/pypi/safezip
@@ -38,24 +38,24 @@ ZipSlip path traversal, ZIP bombs, and malformed/crafted archives.
 Features
 ========
 
-- **ZipSlip protection** — relative traversal, absolute paths, Windows UNC
+- **ZipSlip protection** - relative traversal, absolute paths, Windows UNC
   paths, Unicode lookalike attacks, and null bytes in filenames are all
   blocked.
-- **ZIP bomb protection** — per-member and cumulative decompression ratio
+- **ZIP bomb protection** - per-member and cumulative decompression ratio
   limits abort extraction before runaway decompression can exhaust disk or
   memory.
-- **File size limits** — per-member and total extraction size limits enforced
+- **File size limits** - per-member and total extraction size limits enforced
   at stream time (not based on untrusted header values).
-- **ZIP64 consistency checks** — crafted archives with inconsistent ZIP64
+- **ZIP64 consistency checks** - crafted archives with inconsistent ZIP64
   extra fields are rejected before decompression begins.
-- **Symlink policy** — configurable: ``REJECT`` (default), ``IGNORE``, or
+- **Symlink policy** - configurable: ``REJECT`` (default), ``IGNORE``, or
   ``RESOLVE_INTERNAL`` (full chain verification).
-- **Atomic writes** — every member is written to a temporary file first;
+- **Atomic writes** - every member is written to a temporary file first;
   the destination is only created after all checks pass.  No partial files
   are left on disk after a security abort.
-- **Secure by default** — all limits are active without any configuration.
-- **Zero dependencies** — standard library only.
-- **Environment variable overrides** — all numeric limits can be set via
+- **Secure by default** - all limits are active without any configuration.
+- **Zero dependencies** - standard library only.
+- **Environment variable overrides** - all numeric limits can be set via
   ``SAFEZIP_*`` environment variables for containerised deployments.
 
 Prerequisites

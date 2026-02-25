@@ -243,7 +243,7 @@ class SafeZipFile:
         pwd: Optional[bytes],
     ) -> Path:
         """Core per-member extraction logic."""
-        # Directories — create and skip streaming
+        # Directories - create and skip streaming
         if info.filename.endswith("/"):
             dest = resolve_member_path(base, info.filename.rstrip("/"))
             dest.mkdir(parents=True, exist_ok=True)
@@ -270,12 +270,12 @@ class SafeZipFile:
                 self._emit_event("symlink_ignored")
                 return dest
 
-        # Nested archive guard — extract as raw file, never auto-recurse
+        # Nested archive guard - extract as raw file, never auto-recurse
         suffix = Path(info.filename).suffix.lower()
         if suffix in _ARCHIVE_EXTENSIONS:
             log.debug(
                 (
-                    "Nested archive detected: %r — extracting as raw file, "
+                    "Nested archive detected: %r - extracting as raw file, "
                     "not recursing."
                 ),
                 info.filename,

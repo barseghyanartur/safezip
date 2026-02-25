@@ -25,7 +25,7 @@ class TestFileCountLimit:
             SafeZipFile(many_files_archive)
 
     def test_many_files_custom_limit_passes(self, many_files_archive, tmp_path):
-        # Allow up to 20 000 files — should open without error
+        # Allow up to 20 000 files - should open without error
         with SafeZipFile(many_files_archive, max_files=20_000):
             pass
 
@@ -60,7 +60,7 @@ class TestDeclaredFileSizeLimit:
             info = zipfile.ZipInfo("big.bin")
             zf.writestr(info, b"tiny")
 
-        # Manually patch the ZipInfo to report a huge size — instead,
+        # Manually patch the ZipInfo to report a huge size - instead,
         # test via the limit: store a 200-byte file and set limit=100
         buf2 = io.BytesIO()
         with zipfile.ZipFile(buf2, "w") as zf2:

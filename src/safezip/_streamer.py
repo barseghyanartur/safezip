@@ -132,7 +132,7 @@ def stream_extract_member(
 
                 dst.write(chunk)
 
-        # All checks passed — atomic rename to final destination
+        # All checks passed - atomic rename to final destination
         tmp_path.replace(dest)
 
     except Exception:

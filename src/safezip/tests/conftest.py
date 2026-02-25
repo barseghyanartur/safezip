@@ -221,7 +221,7 @@ def zip64_inconsistency_archive(tmp_path):
     )
     extra_len = len(zip64_extra)
 
-    # Local file header — 32-bit uncompressed size = 100 (not sentinel)
+    # Local file header - 32-bit uncompressed size = 100 (not sentinel)
     local_header = (
         struct.pack(
             "<4s2H3H4s2I2H",
@@ -244,7 +244,7 @@ def zip64_inconsistency_archive(tmp_path):
 
     local_offset = 0
 
-    # Central directory header — 32-bit uncompressed size = 100 (not sentinel)
+    # Central directory header - 32-bit uncompressed size = 100 (not sentinel)
     # Format: 4s | 6H | 4s CRC | 2I (comp,uncomp) | 5H | 2I → 17 items, 46 bytes
     central_header = (
         struct.pack(

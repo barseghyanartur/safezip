@@ -65,7 +65,7 @@ def resolve_member_path(
     parts = _norm.split("/")
 
     # Strip Windows-style relative drive
-    # references (e.g. "C:relpath") — defence-in-depth
+    # references (e.g. "C:relpath") - defence-in-depth
     clean_parts = []
     for part in parts:
         # Skip empty parts (double-slashes) and current-dir dots

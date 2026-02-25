@@ -1,4 +1,4 @@
-"""safezip — Hardened ZIP extraction for Python."""
+"""safezip - Hardened ZIP extraction for Python."""
 
 from ._core import SafeZipFile, safe_extract
 from ._events import SecurityEvent, SymlinkPolicy

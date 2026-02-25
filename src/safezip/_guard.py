@@ -54,7 +54,7 @@ def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
     (0xFFFFFFFF) is set.  A crafted archive can include a ZIP64 block with a
     near-max value while keeping the 32-bit fields at a small non-sentinel
     number; Python then uses the 32-bit value, but our parser sees the huge
-    ZIP64 value — a clear inconsistency.
+    ZIP64 value - a clear inconsistency.
     """
     if not info.extra:
         return
