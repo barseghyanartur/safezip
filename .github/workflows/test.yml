@@ -64,7 +64,8 @@ jobs:
 
       - name: Run tests
         run: |
-          sudo mkdir -p path/to /var/files/extracted
+          mkdir -p path/to && chmod 777 path/to
+          sudo mkdir -p /var/files/extracted
           sudo chmod 777 /var/files/extracted
           pytest \
             -vrx \
