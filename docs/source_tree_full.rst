@@ -9,15 +9,12 @@ the contents of each key file.
 
    safezip/
    ├── docs
-   │   ├── pytest_codeblock_15boz92d
-   │   ├── _implement_pytest_hooks.rst
    │   ├── conf.py
    │   ├── contributor_guidelines.rst
    │   ├── documentation.rst
    │   ├── full-llms.rst
    │   ├── index.rst
    │   ├── llms.rst
-   │   ├── markdown.rst
    │   └── package.rst
    ├── src
    │   └── safezip
@@ -81,13 +78,6 @@ docker-compose.yml
    :language: yaml
    :caption: docker-compose.yml
 
-docs/_implement_pytest_hooks.rst
---------------------------------
-
-.. literalinclude:: _implement_pytest_hooks.rst
-   :language: rst
-   :caption: docs/_implement_pytest_hooks.rst
-
 docs/conf.py
 ------------
 
@@ -129,13 +119,6 @@ docs/llms.rst
 .. literalinclude:: llms.rst
    :language: rst
    :caption: docs/llms.rst
-
-docs/markdown.rst
------------------
-
-.. literalinclude:: markdown.rst
-   :language: rst
-   :caption: docs/markdown.rst
 
 docs/package.rst
 ----------------
