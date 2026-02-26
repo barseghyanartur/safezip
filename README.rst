@@ -1,6 +1,10 @@
 =======
 safezip
 =======
+.. image:: https://raw.githubusercontent.com/barseghyanartur/safezip/main/docs/_static/safezip_logo.webp
+   :alt: SafeZip Logo
+   :align: center
+
 Hardened ZIP extraction for Python - secure by default.
 
 .. image:: https://img.shields.io/pypi/v/safezip.svg
