@@ -31,8 +31,8 @@ Hardened ZIP extraction for Python - secure by default.
    :target: https://github.com/barseghyanartur/safezip/#License
    :alt: MIT
 
-.. image:: https://coveralls.io/repos/github/barseghyanartur/fake.py/badge.svg?branch=main&service=github
-    :target: https://coveralls.io/github/barseghyanartur/fake.py?branch=main
+.. image:: https://coveralls.io/repos/github/barseghyanartur/safezip/badge.svg?branch=main&service=github
+    :target: https://coveralls.io/github/barseghyanartur/safezip?branch=main
     :alt: Coverage
 
 ``safezip`` is a zero-dependency, production-grade wrapper around Python's
