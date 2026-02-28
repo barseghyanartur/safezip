@@ -41,3 +41,4 @@ local_settings.py
 benchmark.py
 src/safezip.egg-info
 ARCHITECTURE.rst
+.claude
