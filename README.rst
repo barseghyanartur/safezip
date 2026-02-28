@@ -61,8 +61,9 @@ Features
   are left on disk after a security abort.
 - **Secure by default** - all limits are active without any configuration.
 - **Zero dependencies** - standard library only.
-- **Environment variable overrides** - all numeric limits can be set via
-  ``SAFEZIP_*`` environment variables for containerised deployments.
+- **Environment variable overrides** - all limits (including ``symlink_policy``)
+  can be set via ``SAFEZIP_*`` environment variables for containerised
+  deployments.
 
 Prerequisites
 =============
@@ -145,7 +146,7 @@ Security event monitoring
 Environment variable overrides
 ==============================
 
-All numeric limits can be overridden without changing code:
+All limits can be overridden without changing code:
 
 .. code-block:: sh
 
@@ -154,6 +155,8 @@ All numeric limits can be overridden without changing code:
     export SAFEZIP_MAX_FILES=1000
     export SAFEZIP_MAX_PER_MEMBER_RATIO=50
     export SAFEZIP_MAX_TOTAL_RATIO=50
+    export SAFEZIP_MAX_NESTING_DEPTH=3
+    export SAFEZIP_SYMLINK_POLICY=reject      # reject | ignore | resolve_internal
 
 Default limits
 ==============
