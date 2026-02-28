@@ -73,12 +73,13 @@ jobs:
             --cov-report=term \
             --cov-report=xml
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
-        if: matrix.python-version == '3.12'
+      - name: Coveralls
+        id: coveralls-setup
+        continue-on-error: true
+        uses: AndreMiras/coveralls-python-action@develop
         with:
-          files: coverage.xml
-          fail_ci_if_error: false
+          parallel: true
+          flag-name: Run Tests
 
   # *************************************
   # ************** Coveralls ************
