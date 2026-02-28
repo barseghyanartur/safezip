@@ -113,7 +113,7 @@ class TestZip64Inconsistency:
     """Guard detects ZIP64 extra fields that disagree with central directory."""
 
     def test_zip64_inconsistency_raises(self, zip64_inconsistency_archive):
-        with pytest.raises((MalformedArchiveError, Exception)):
+        with pytest.raises(MalformedArchiveError):
             SafeZipFile(zip64_inconsistency_archive)
 
 

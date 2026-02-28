@@ -15,6 +15,7 @@ __license__ = "MIT"
 __all__ = ("validate_archive",)
 
 _ZIP64_EXTRA_TAG = 0x0001
+_ZIP64_SENTINEL = 0xFFFFFFFF
 
 
 def _parse_zip64_extra(extra_bytes: bytes) -> dict:
@@ -48,20 +49,40 @@ def _parse_zip64_extra(extra_bytes: bytes) -> dict:
 
 
 def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
-    """Detect ZIP64 extra fields that disagree with Python's resolved sizes.
+    """Detect ZIP64 inconsistencies and missing ZIP64 blocks.
 
-    Python's zipfile uses the ZIP64 value only when the 32-bit sentinel
-    (0xFFFFFFFF) is set.  A crafted archive can include a ZIP64 block with a
-    near-max value while keeping the 32-bit fields at a small non-sentinel
-    number; Python then uses the 32-bit value, but our parser sees the huge
-    ZIP64 value - a clear inconsistency.
+    Two classes of problem are caught:
+
+    1. **Missing ZIP64 block**: A 32-bit field holds the sentinel value
+       ``0xFFFFFFFF`` (meaning "look in ZIP64 extra field"), but no ZIP64
+       extra field is present.  This is always a malformed archive.
+
+    2. **Disagreeing ZIP64 block**: A ZIP64 extra field is present, but the
+       64-bit value it reports differs from the size that Python's
+       ``zipfile`` resolved from the central directory.  A crafted archive
+       can set the 32-bit field to a small non-sentinel value while hiding a
+       huge size in the ZIP64 block; Python uses the small 32-bit value, but
+       we see the discrepancy and reject the archive.
     """
+    # Check 1: 32-bit sentinel present but no ZIP64 extra field
+    if info.file_size == _ZIP64_SENTINEL or info.compress_size == _ZIP64_SENTINEL:
+        zip64 = _parse_zip64_extra(info.extra) if info.extra else {}
+        if not zip64:
+            raise MalformedArchiveError(
+                f"Entry {info.filename!r} has a ZIP64 sentinel (0xFFFFFFFF) "
+                f"in the 32-bit size field but no ZIP64 extra field is present. "
+                f"Archive is malformed."
+            )
+        # zip64 is present; fall through to the consistency check below.
+        return
+
     if not info.extra:
         return
     zip64 = _parse_zip64_extra(info.extra)
     if not zip64:
         return
 
+    # Check 2: ZIP64 extra field present but values disagree with resolved sizes
     if "uncompressed_size" in zip64 and zip64["uncompressed_size"] != info.file_size:
         raise MalformedArchiveError(
             f"ZIP64 inconsistency in entry {info.filename!r}: "

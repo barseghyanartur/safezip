@@ -48,8 +48,10 @@ Features
 - **ZIP bomb protection** - per-member and cumulative decompression ratio
   limits abort extraction before runaway decompression can exhaust disk or
   memory.
-- **File size limits** - per-member and total extraction size limits enforced
-  at stream time (not based on untrusted header values).
+- **File size limits** - per-member size is checked against the declared header
+  value at open time (Guard phase) and again against actual decompressed bytes
+  during streaming (Streamer phase).  Total extraction size is enforced
+  cumulatively across all members at stream time.
 - **ZIP64 consistency checks** - crafted archives with inconsistent ZIP64
   extra fields are rejected before decompression begins.
 - **Symlink policy** - configurable: ``REJECT`` (default), ``IGNORE``, or
