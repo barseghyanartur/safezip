@@ -61,9 +61,9 @@ Features
   are left on disk after a security abort.
 - **Secure by default** - all limits are active without any configuration.
 - **Zero dependencies** - standard library only.
-- **Environment variable overrides** - all limits (including ``symlink_policy``)
-  can be set via ``SAFEZIP_*`` environment variables for containerised
-  deployments.
+- **Environment variable overrides** - all
+  limits (including ``symlink_policy``) can be set via ``SAFEZIP_*``
+  environment variables for containerised deployments.
 
 Prerequisites
 =============
