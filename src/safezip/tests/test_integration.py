@@ -168,7 +168,11 @@ class TestSecurityEventCoverage:
             SafeZipFile(p, max_file_size=500, on_security_event=events.append) as zf,
         ):
             zf.extractall(dest)
-        assert any(e.event_type == "file_size_exceeded" for e in events)
+        # The Guard may fire "declared_size_exceeded" (declared header size >
+        # limit) or the Streamer may fire "file_size_exceeded" (actual
+        # decompressed bytes > limit).  Both indicate a file-size violation.
+        size_events = {"file_size_exceeded", "declared_size_exceeded"}
+        assert any(e.event_type in size_events for e in events)
 
     def test_callback_fires_on_ratio_exceeded(self, high_ratio_archive, tmp_path):
         events = []
