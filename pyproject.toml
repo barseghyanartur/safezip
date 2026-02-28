@@ -2,7 +2,7 @@
 name = "safezip"
 description = "Hardened ZIP extraction for Python - secure by default."
 readme = "README.rst"
-version = "0.1.1"
+version = "0.1.2"
 requires-python = ">=3.10"
 dependencies = []
 authors = [
@@ -233,6 +233,7 @@ ignore = [
     "htmlcov",
     "node_modules",
     "venv",
+    "ARCHITECTURE.rst",
 ]
 
 [[tool.sphinx-source-tree.files]]
@@ -292,4 +293,5 @@ ignore = [
     "venv",
     "examples",
     "docs",
+    "ARCHITECTURE.rst",
 ]

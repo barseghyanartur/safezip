@@ -77,10 +77,17 @@ def absolute_path_archive(tmp_path):
 
 @pytest.fixture()
 def unicode_traversal_archive(tmp_path):
-    """A ZIP with a Unicode lookalike that normalises to a traversal path."""
-    # Use FULLWIDTH SOLIDUS U+FF0F which normalises to / under NFKC
-    # but we craft a real .. traversal with a lookalike dot
-    data = _make_zip_bytes([("subdir/../../escape.txt", b"escaped")])
+    """A ZIP with combining Unicode characters that NFC-normalises to a path
+    still containing a ``..`` traversal component.
+
+    The filename ``e\\u0301vil/../../escape.txt`` uses U+0301 COMBINING ACUTE
+    ACCENT (NFD form of ``é``).  After Unicode NFC normalisation the combining
+    accent is folded into the precomposed ``é``, yielding
+    ``évil/../../escape.txt``.  The ``..`` components are unaffected by NFC
+    and must still be detected and rejected.
+    """
+    # e + COMBINING ACUTE ACCENT → é after NFC; the traversal stays intact
+    data = _make_zip_bytes([("e\u0301vil/../../escape.txt", b"escaped")])
     p = tmp_path / "unicode_traversal.zip"
     p.write_bytes(data)
     return p
