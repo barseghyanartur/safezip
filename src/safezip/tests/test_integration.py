@@ -9,6 +9,8 @@ from safezip import (
     CompressionRatioError,
     FileCountExceededError,
     FileSizeExceededError,
+    MalformedArchiveError,
+    NestingDepthError,
     SafeZipFile,
     SymlinkPolicy,
     UnsafeZipError,
@@ -122,6 +124,89 @@ class TestExplicitPathRequirement:
             zf.extractall(None)
 
 
+class TestMalformedArchive:
+    """Structurally invalid archives raise MalformedArchiveError."""
+
+    def test_not_a_zip_raises_malformed(self, tmp_path):
+        """A file that is not a ZIP at all raises MalformedArchiveError."""
+        bad = tmp_path / "bad.zip"
+        bad.write_bytes(b"this is not a zip file")
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(bad)
+
+    def test_zip64_inconsistency_raises(self, zip64_inconsistency_archive):
+        """ZIP64 extra field that disagrees with central directory is rejected."""
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(zip64_inconsistency_archive)
+
+
+class TestSecurityEventCoverage:
+    """on_security_event callback fires for all security violation types."""
+
+    def test_callback_fires_on_path_traversal(self, zipslip_archive, tmp_path):
+        events = []
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with (
+            pytest.raises(UnsafeZipError),
+            SafeZipFile(zipslip_archive, on_security_event=events.append) as zf,
+        ):
+            zf.extractall(dest)
+        assert any(e.event_type == "zip_slip_detected" for e in events)
+
+    def test_callback_fires_on_file_size_exceeded(self, tmp_path):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+            zf.writestr("data.bin", b"A" * 1000)
+        p = tmp_path / "large.zip"
+        p.write_bytes(buf.getvalue())
+        dest = tmp_path / "out"
+        dest.mkdir()
+        events = []
+        with (
+            pytest.raises(FileSizeExceededError),
+            SafeZipFile(p, max_file_size=500, on_security_event=events.append) as zf,
+        ):
+            zf.extractall(dest)
+        # The Guard may fire "declared_size_exceeded" (declared header size >
+        # limit) or the Streamer may fire "file_size_exceeded" (actual
+        # decompressed bytes > limit).  Both indicate a file-size violation.
+        size_events = {"file_size_exceeded", "declared_size_exceeded"}
+        assert any(e.event_type in size_events for e in events)
+
+    def test_callback_fires_on_ratio_exceeded(self, high_ratio_archive, tmp_path):
+        events = []
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with (
+            pytest.raises(CompressionRatioError),
+            SafeZipFile(
+                high_ratio_archive,
+                max_per_member_ratio=10.0,
+                on_security_event=events.append,
+            ) as zf,
+        ):
+            zf.extractall(dest)
+        assert any(e.event_type == "compression_ratio_exceeded" for e in events)
+
+    def test_callback_fires_on_file_count_exceeded(self, many_files_archive, tmp_path):
+        events = []
+        with pytest.raises(FileCountExceededError):
+            SafeZipFile(many_files_archive, on_security_event=events.append)
+        assert any(e.event_type == "file_count_exceeded" for e in events)
+
+    def test_callback_fires_on_symlink_rejected(self, symlink_archive, tmp_path):
+        events = []
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with (
+            pytest.raises(UnsafeZipError),
+            SafeZipFile(symlink_archive, on_security_event=events.append) as zf,
+        ):
+            zf.extractall(dest)
+        assert any(e.event_type == "symlink_rejected" for e in events)
+
+
 class TestLegitimateExtraction:
     """Well-formed archives extract correctly and completely."""
 
@@ -184,6 +269,33 @@ class TestSecurityEventCallback:
             SafeZipFile(zipslip_archive, on_security_event=broken_callback) as zf,
         ):
             zf.extractall(dest)
+
+
+class TestNestingDepthLimit:
+    """SafeZipFile refuses instantiation when _nesting_depth exceeds the limit."""
+
+    def test_nesting_depth_exceeded_raises(self, legitimate_archive):
+        """_nesting_depth > max_nesting_depth raises NestingDepthError."""
+        with pytest.raises(NestingDepthError):
+            SafeZipFile(legitimate_archive, max_nesting_depth=3, _nesting_depth=4)
+
+    def test_nesting_depth_at_limit_passes(self, legitimate_archive):
+        """_nesting_depth == max_nesting_depth is allowed."""
+        with SafeZipFile(legitimate_archive, max_nesting_depth=3, _nesting_depth=3):
+            pass
+
+    def test_nesting_depth_zero_always_passes(self, legitimate_archive):
+        """Default _nesting_depth=0 never raises."""
+        with SafeZipFile(legitimate_archive):
+            pass
+
+    def test_nesting_depth_env_var_respected(self, legitimate_archive, monkeypatch):
+        """SAFEZIP_MAX_NESTING_DEPTH env var is honoured when no constructor arg
+        is given."""
+        monkeypatch.setenv("SAFEZIP_MAX_NESTING_DEPTH", "1")
+        # depth=2 > env-var limit of 1 → should raise
+        with pytest.raises(NestingDepthError):
+            SafeZipFile(legitimate_archive, _nesting_depth=2)
 
 
 class TestNestedArchiveGuard:

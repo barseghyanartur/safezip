@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import BinaryIO, Optional, Union
 
 from ._events import SecurityEvent, SecurityEventCallback, SymlinkPolicy
-from ._exceptions import NestingDepthError, UnsafeZipError
+from ._exceptions import (
+    CompressionRatioError,
+    FileCountExceededError,
+    FileSizeExceededError,
+    MalformedArchiveError,
+    NestingDepthError,
+    TotalSizeExceededError,
+    UnsafeZipError,
+)
 from ._guard import validate_archive
 from ._sandbox import check_symlink, resolve_member_path
 from ._streamer import CumulativeCounters, stream_extract_member
@@ -23,17 +31,6 @@ __all__ = (
 )
 
 log = logging.getLogger("safezip.security")
-
-# Environment variable names for limit overrides
-_ENV_PREFIX = "SAFEZIP_"
-_ENV_VARS = {
-    "max_file_size": "SAFEZIP_MAX_FILE_SIZE",
-    "max_total_size": "SAFEZIP_MAX_TOTAL_SIZE",
-    "max_files": "SAFEZIP_MAX_FILES",
-    "max_per_member_ratio": "SAFEZIP_MAX_PER_MEMBER_RATIO",
-    "max_total_ratio": "SAFEZIP_MAX_TOTAL_RATIO",
-    "max_nesting_depth": "SAFEZIP_MAX_NESTING_DEPTH",
-}
 
 _ARCHIVE_EXTENSIONS = frozenset(
     {".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".egg"}
@@ -60,8 +57,33 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
+    """Read SAFEZIP_SYMLINK_POLICY from the environment.
+
+    Accepted values (case-insensitive): ``reject``, ``ignore``,
+    ``resolve_internal``.  Any other value is logged and ignored.
+    """
+    val = os.environ.get("SAFEZIP_SYMLINK_POLICY")
+    if val is None:
+        return default
+    mapping = {
+        "reject": SymlinkPolicy.REJECT,
+        "ignore": SymlinkPolicy.IGNORE,
+        "resolve_internal": SymlinkPolicy.RESOLVE_INTERNAL,
+    }
+    resolved = mapping.get(val.lower())
+    if resolved is None:
+        log.warning(
+            "Ignoring unrecognised SAFEZIP_SYMLINK_POLICY value %r; using default %r.",
+            val,
+            default.value,
+        )
+        return default
+    return resolved
+
+
 def _archive_hash(file: Union[str, os.PathLike, BinaryIO]) -> str:
-    """Return first 16 hex characters of SHA-256 of the archive identifier."""
+    """Return first 16 hex characters of SHA-256 of the archive path/name."""
     if isinstance(file, (str, os.PathLike)):
         return hashlib.sha256(str(file).encode()).hexdigest()[:16]
     name = getattr(file, "name", repr(file))
@@ -92,19 +114,13 @@ class SafeZipFile:
         max_files: Optional[int] = None,
         max_per_member_ratio: Optional[float] = None,
         max_total_ratio: Optional[float] = None,
-        max_nesting_depth: int = 3,
-        symlink_policy: SymlinkPolicy = SymlinkPolicy.REJECT,
+        max_nesting_depth: Optional[int] = None,
+        symlink_policy: Optional[SymlinkPolicy] = None,
         password: Optional[bytes] = None,
         on_security_event: SecurityEventCallback = None,
         _nesting_depth: int = 0,
     ) -> None:
-        if _nesting_depth > max_nesting_depth:
-            raise NestingDepthError(
-                f"Nested archive depth {_nesting_depth} exceeds "
-                f"max_nesting_depth={max_nesting_depth}."
-            )
-
-        # Resolve limits: constructor arg > env var > default
+        # Resolve limits: constructor arg > env var > hardcoded default
         self._max_file_size = (
             max_file_size
             if max_file_size is not None
@@ -130,19 +146,43 @@ class SafeZipFile:
             if max_total_ratio is not None
             else _env_float("SAFEZIP_MAX_TOTAL_RATIO", 200.0)
         )
-        self._max_nesting_depth = max_nesting_depth
-        self._symlink_policy = symlink_policy
+        self._max_nesting_depth = (
+            max_nesting_depth
+            if max_nesting_depth is not None
+            else _env_int("SAFEZIP_MAX_NESTING_DEPTH", 3)
+        )
+        self._symlink_policy = (
+            symlink_policy
+            if symlink_policy is not None
+            else _env_symlink_policy(SymlinkPolicy.REJECT)
+        )
         self._password = password
         self._on_security_event = on_security_event
         self._archive_hash = _archive_hash(file)
 
+        if _nesting_depth > self._max_nesting_depth:
+            raise NestingDepthError(
+                f"Nested archive depth {_nesting_depth} exceeds "
+                f"max_nesting_depth={self._max_nesting_depth}."
+            )
+
         try:
             self._zf = zipfile.ZipFile(file, mode)
         except zipfile.BadZipFile as exc:
-            raise zipfile.BadZipFile(f"Cannot open archive: {exc}") from exc
+            raise MalformedArchiveError(f"Cannot open archive: {exc}") from exc
 
         # Run the Guard immediately on open
-        validate_archive(self._zf, self._max_files, self._max_file_size)
+        try:
+            validate_archive(self._zf, self._max_files, self._max_file_size)
+        except FileCountExceededError:
+            self._emit_event("file_count_exceeded")
+            raise
+        except FileSizeExceededError:
+            self._emit_event("declared_size_exceeded")
+            raise
+        except MalformedArchiveError:
+            self._emit_event("malformed_archive")
+            raise
 
     # ------------------------------------------------------------------
     # Context manager
@@ -249,8 +289,20 @@ class SafeZipFile:
             dest.mkdir(parents=True, exist_ok=True)
             return dest
 
-        # Validate and resolve the destination path
-        dest = resolve_member_path(base, info.filename)
+        # Validate and resolve the destination path (Sandbox / Phase B)
+        try:
+            dest = resolve_member_path(base, info.filename)
+        except UnsafeZipError:
+            self._emit_event("zip_slip_detected")
+            log.warning(
+                "Path traversal attempt blocked",
+                extra={
+                    "event": "zip_slip_detected",
+                    "member": info.filename[:256],
+                    "archive_hash": self._archive_hash,
+                },
+            )
+            raise
 
         # Check for symlinks in the *source* entry
         # (detect if the ZIP entry itself is stored as a symlink)
@@ -260,39 +312,83 @@ class SafeZipFile:
         if is_symlink_entry:
             if self._symlink_policy == SymlinkPolicy.REJECT:
                 self._emit_event("symlink_rejected")
+                log.warning(
+                    "Symlink entry rejected",
+                    extra={
+                        "event": "symlink_rejected",
+                        "member": info.filename[:256],
+                        "archive_hash": self._archive_hash,
+                    },
+                )
                 raise UnsafeZipError(
-                    (
-                        f"Symlink entry {info.filename!r} "
-                        f"rejected (symlink_policy=REJECT)."
-                    )
+                    f"Symlink entry {info.filename!r} rejected (symlink_policy=REJECT)."
                 )
             if self._symlink_policy == SymlinkPolicy.IGNORE:
                 self._emit_event("symlink_ignored")
+                log.warning(
+                    "Symlink entry skipped (IGNORE policy)",
+                    extra={
+                        "event": "symlink_ignored",
+                        "member": info.filename[:256],
+                        "archive_hash": self._archive_hash,
+                    },
+                )
                 return dest
 
         # Nested archive guard - extract as raw file, never auto-recurse
         suffix = Path(info.filename).suffix.lower()
         if suffix in _ARCHIVE_EXTENSIONS:
             log.debug(
-                (
-                    "Nested archive detected: %r - extracting as raw file, "
-                    "not recursing."
-                ),
+                "Nested archive detected: %r - extracting as raw file, not recursing.",
                 info.filename,
             )
 
-        # Stream-extract with all runtime monitors
-        stream_extract_member(
-            self._zf,
-            info,
-            dest,
-            max_file_size=self._max_file_size,
-            max_per_member_ratio=self._max_per_member_ratio,
-            max_total_size=self._max_total_size,
-            max_total_ratio=self._max_total_ratio,
-            counters=counters,
-            pwd=pwd,
-        )
+        # Stream-extract with all runtime monitors (Phase C)
+        try:
+            stream_extract_member(
+                self._zf,
+                info,
+                dest,
+                max_file_size=self._max_file_size,
+                max_per_member_ratio=self._max_per_member_ratio,
+                max_total_size=self._max_total_size,
+                max_total_ratio=self._max_total_ratio,
+                counters=counters,
+                pwd=pwd,
+            )
+        except FileSizeExceededError:
+            self._emit_event("file_size_exceeded")
+            log.warning(
+                "Member size limit exceeded during streaming",
+                extra={
+                    "event": "file_size_exceeded",
+                    "member": info.filename[:256],
+                    "archive_hash": self._archive_hash,
+                },
+            )
+            raise
+        except TotalSizeExceededError:
+            self._emit_event("total_size_exceeded")
+            log.warning(
+                "Cumulative extraction size limit exceeded during streaming",
+                extra={
+                    "event": "total_size_exceeded",
+                    "member": info.filename[:256],
+                    "archive_hash": self._archive_hash,
+                },
+            )
+            raise
+        except CompressionRatioError:
+            self._emit_event("compression_ratio_exceeded")
+            log.warning(
+                "Compression ratio limit exceeded during streaming",
+                extra={
+                    "event": "compression_ratio_exceeded",
+                    "member": info.filename[:256],
+                    "archive_hash": self._archive_hash,
+                },
+            )
+            raise
 
         # Post-extraction symlink check (RESOLVE_INTERNAL policy)
         if dest.is_symlink() and self._symlink_policy == SymlinkPolicy.RESOLVE_INTERNAL:
