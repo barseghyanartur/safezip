@@ -189,9 +189,7 @@ class TestSecurityEventCoverage:
             zf.extractall(dest)
         assert any(e.event_type == "compression_ratio_exceeded" for e in events)
 
-    def test_callback_fires_on_file_count_exceeded(
-        self, many_files_archive, tmp_path
-    ):
+    def test_callback_fires_on_file_count_exceeded(self, many_files_archive, tmp_path):
         events = []
         with pytest.raises(FileCountExceededError):
             SafeZipFile(many_files_archive, on_security_event=events.append)
@@ -291,9 +289,7 @@ class TestNestingDepthLimit:
         with SafeZipFile(legitimate_archive):
             pass
 
-    def test_nesting_depth_env_var_respected(
-        self, legitimate_archive, monkeypatch
-    ):
+    def test_nesting_depth_env_var_respected(self, legitimate_archive, monkeypatch):
         """SAFEZIP_MAX_NESTING_DEPTH env var is honoured when no constructor arg
         is given."""
         monkeypatch.setenv("SAFEZIP_MAX_NESTING_DEPTH", "1")

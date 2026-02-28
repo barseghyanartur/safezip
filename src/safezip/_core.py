@@ -74,8 +74,7 @@ def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
     resolved = mapping.get(val.lower())
     if resolved is None:
         log.warning(
-            "Ignoring unrecognised SAFEZIP_SYMLINK_POLICY value %r; "
-            "using default %r.",
+            "Ignoring unrecognised SAFEZIP_SYMLINK_POLICY value %r; using default %r.",
             val,
             default.value,
         )
@@ -322,8 +321,7 @@ class SafeZipFile:
                     },
                 )
                 raise UnsafeZipError(
-                    f"Symlink entry {info.filename!r} "
-                    f"rejected (symlink_policy=REJECT)."
+                    f"Symlink entry {info.filename!r} rejected (symlink_policy=REJECT)."
                 )
             if self._symlink_policy == SymlinkPolicy.IGNORE:
                 self._emit_event("symlink_ignored")
@@ -341,8 +339,7 @@ class SafeZipFile:
         suffix = Path(info.filename).suffix.lower()
         if suffix in _ARCHIVE_EXTENSIONS:
             log.debug(
-                "Nested archive detected: %r - extracting as raw file, "
-                "not recursing.",
+                "Nested archive detected: %r - extracting as raw file, not recursing.",
                 info.filename,
             )
 
