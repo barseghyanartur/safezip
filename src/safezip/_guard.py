@@ -73,7 +73,11 @@ def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
                 f"in the 32-bit size field but no ZIP64 extra field is present. "
                 f"Archive is malformed."
             )
-        # zip64 is present; fall through to the consistency check below.
+        # A ZIP64 block is present.  Python's zipfile should have already
+        # replaced info.file_size / info.compress_size with the resolved
+        # 64-bit values, so the sentinel should no longer appear in those
+        # fields when we reach Check 2.  Running Check 2 here would produce
+        # a false positive (ZIP64 value ≠ sentinel), so we stop.
         return
 
     if not info.extra:
