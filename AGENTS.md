@@ -1,50 +1,41 @@
-# AGENTS.md
+# AGENTS.md — safezip
 
-**AI Agent / LLM Instructions for `safezip`**
-
-**Last updated**: 2026-03-01
 **Package version**: See pyproject.toml
 **Repository**: https://github.com/barseghyanartur/safezip
-**Primary maintainer**: Artur Barseghyan <artur.barseghyan@gmail.com>
+**Maintainer**: Artur Barseghyan <artur.barseghyan@gmail.com>
 
-This file is written specifically for AI coding agents (Claude, Grok, Cursor, Windsurf, Aider, Continue.dev, etc.).
-Follow these guidelines when you are asked to **use**, **analyze**, **fix**, **extend**, **review**, **document**, or **integrate** this package in code or responses.
+This file is for AI agents and developers using AI assistants to work on or with
+safezip. It covers two distinct roles: **using** the package in application code,
+and **developing/extending** the package itself.
 
 ---
 
 ## 1. Project Mission (Never Deviate)
 
-> **"Hardened ZIP extraction for Python — secure by default, zero dependencies, production-grade."**
+> Hardened ZIP extraction for Python — secure by default, zero dependencies,
+> production-grade.
 
-When **using** the package:
-- Always emphasize **secure defaults** in examples (e.g., no custom limits unless needed).
-- Recommend `safe_extract` for simple cases; `SafeZipFile` for control.
-
-When **developing/extending**:
-- Preserve **zero external dependencies** (stdlib only).
-- Keep the library **secure by default** (no relaxed limits unless explicitly requested).
-- Maintain the **three-phase security model** (Guard → Sandbox → Streamer).
-- Respect the **atomic-write contract** (never leave partial files on disk after a security abort).
+- Secure defaults are never relaxed without an explicit caller decision.
+- No external dependencies. Ever.
+- The three-phase security model (Guard → Sandbox → Streamer) is preserved.
+- No partial files on disk after a security abort.
 
 ---
 
-## 2. Core Usage Instructions (For LLM Responses Involving the Package)
+## 2. Using safezip in Application Code
 
-When a user asks about **using `safezip`** (e.g., "How do I safely extract a ZIP in Python?"):
-1. **Start with secure defaults**: Show examples without custom limits first.
-2. **Explain risks mitigated**: Briefly mention ZipSlip, bombs, malformed archives.
-3. **Provide code snippets**: Use the quick-start from README.rst.
-4. **Advise on customization**: Only if asked; warn about relaxing limits.
-5. **Test in responses**: If generating code, suggest testing with crafted archives (e.g., via `zipfile` in-memory).
+### Simple case
 
-**Basic Usage Template** (copy this into responses):
 ```python
 from safezip import safe_extract
 
-# Simple: Secure defaults protect against common attacks
+# Secure defaults protect against all common attacks
 safe_extract("user_upload.zip", "/path/to/extract")
+```
 
-# Advanced: With custom limits and monitoring
+### With monitoring and custom limits
+
+```python
 from safezip import SafeZipFile, SecurityEvent
 
 def monitor(event: SecurityEvent) -> None:
@@ -52,216 +43,351 @@ def monitor(event: SecurityEvent) -> None:
 
 with SafeZipFile(
     "user_upload.zip",
-    max_file_size=100 * 1024 * 1024,  # 100 MiB per file
-    on_security_event=monitor
+    max_file_size=100 * 1024 * 1024,  # 100 MiB per member
+    on_security_event=monitor,
 ) as zf:
     zf.extractall("/path/to/extract")
 ```
-- **Key Considerations**:
-  - Always use context manager for `SafeZipFile` to ensure close.
-  - For user uploads: Validate archive hash or log events.
-  - Env vars: Mention overrides (e.g., `export SAFEZIP_MAX_FILES=5000`).
-  - Limitations: Note data-descriptor ZIPs skip ratio checks; symlinks extracted as files (not created).
 
-When integrating into larger code (e.g., web apps):
-- Wrap in try/except `SafezipError` subclasses.
-- Log security events.
-- Never auto-relax limits based on input.
+### Exception handling
 
----
-
-## 3. Core Architecture (Memorize for Development/Extension)
-
-The library is deliberately split into **three isolated phases**:
-
-| Phase       | File                  | Responsibility                              | When it runs                  | What it can raise                     |
-|-------------|-----------------------|---------------------------------------------|-------------------------------|---------------------------------------|
-| **Guard**   | `_guard.py`           | Static pre-checks (count, declared sizes, ZIP64 consistency, malformed) | On `SafeZipFile(...)` open   | `FileCountExceededError`, `FileSizeExceededError`, `MalformedArchiveError` |
-| **Sandbox** | `_sandbox.py`         | Path sanitization (ZipSlip, absolute paths, Unicode NFC, null bytes, length) + symlink policy | Before every extraction       | `UnsafeZipError`                      |
-| **Streamer**| `_streamer.py`        | Streaming decompression + runtime limits (actual size, ratios, cumulative) + atomic temp file | During `extract()` / `extractall()` | `FileSizeExceededError`, `TotalSizeExceededError`, `CompressionRatioError` |
-
-**Never merge responsibilities** between these files.
-
-**Main public API** (`_core.py`):
-- `SafeZipFile` (context manager + drop-in replacement for `zipfile.ZipFile` read-only methods).
-- `safe_extract(...)` (convenience: open + extractall + close).
-
-**When extending** (e.g., new feature request):
-- Add to the appropriate phase (e.g., new path check → Sandbox).
-- Update `_core.py` to forward new params if needed.
-- Preserve zero-deps: Use stdlib (e.g., `struct` for ZIP parsing).
-
----
-
-## 4. Security Principles You Must Enforce
-
-1. **Default limits are sacred**
-   - Never lower them in examples or defaults.
-   - Use `_env_int()` / `_env_float()` / `_env_symlink_policy()` for overrides.
-
-2. **Data-descriptor ZIPs are a known gap**
-   - Ratios are **not enforced** when `compress_size == 0`.
-   - If fixing/extending, do it in `stream_extract_member` only — do **not** break atomicity.
-   - In responses: Warn users if their use case involves streamed ZIPs.
-
-3. **Symlink policy reality (README is slightly outdated)**
-   - `RESOLVE_INTERNAL` currently extracts the target string as a **regular file** (does **not** create an OS symlink or verify chains).
-   - `check_symlink()` only runs on actual filesystem symlinks.
-   - If extending to create real symlinks: Implement in `_extract_one`, use `os.symlink`, verify with `_verify_symlink_chain`, update README/tests.
-
-4. **Atomicity is non-negotiable**
-   - Every member → temp file → `replace()` on success.
-   - On any exception → `unlink(missing_ok=True)` the temp file.
-   - In new code: Follow this pattern.
-
-5. **When using in code**:
-   - Assume untrusted inputs; always use full limits.
-   - For nested ZIPs: Manually recurse with increased `_nesting_depth` if needed, but warn about bombs.
-
----
-
-## 5. Coding Conventions and Styles (Based on pyproject.toml)
-
-Follow these strictly when generating or modifying code. They are enforced by tools like ruff, mypy, and doc8.
-
-1. **Line Length**: 88 characters max (ruff setting). Use black-style formatting implicitly.
-2. **Linting (ruff)**:
-   - Selected rules: B (bugbear), C4 (comprehensions), E (pycodestyle errors), F (pyflakes), G (logging), I (isort), ISC (implicit str concat), INP (no pep420), N (pep8-naming), PERF (performance), Q (flake8-quotes), SIM (simplify).
-   - Ignored: G004 (logging-f-string), ISC003 (multi-line concat).
-   - Fix mode: Enabled (ruff --fix).
-   - Isort: known-first-party = ["safezip"].
-   - Dummy variables: Allow underscore-prefixed (e.g., _var).
-   - Target: Python 3.10+.
-   - Per-file ignores: e.g., "conftest.py" ignores PERF203.
-3. **Type Checking (mypy)**:
-   - check_untyped_defs = true (check untyped functions).
-   - warn_unused_ignores, warn_redundant_casts, warn_unused_configs = true.
-   - ignore_missing_imports = true (for stdlib/zero-deps).
-4. **Documentation (doc8 + sphinx)**:
-   - RST style: Follow hierarchy in README (===== > ===== > ----- > ~~~~~ etc.).
-   - Ignore paths: docs/requirements.txt, egg-info/SOURCES.txt.
-   - Sphinx: Use rtd-theme, autobuild, no-pragma, markdown-builder, llms-txt-link, source-tree.
-5. **Testing (pytest)**:
-   - Addopts: -ra -vvv -q --cov=safezip --cov-report=html/term --capture=no.
-   - Paths: src/safezip/tests, .rst/.md files.
-   - Coverage: ≥95%, show_missing=true, exclude pragma: no cover, @overload.
-6. **General Styles**:
-   - Imports: Sorted (ruff I), first-party "safezip".
-   - Strings: Prefer f-strings, but respect Q (quotes).
-   - Naming: pep8 (ruff N).
-   - Performance: Avoid loops with try-except (PERF203 ignored in conftest).
-   - No additional deps: Enforce in code/reviews.
-
-When editing code: Run `make ruff`, `make doc8`, `mypy`. Pre-commit hooks enforce this.
-
----
-
-## 6. How to Add / Change Features or Fix Bugs (Agent Workflow)
-
-When a user asks for a **new feature** (e.g., "Add recursive nested ZIP extraction") or **bug fix**:
-1. **Quote this section**: Start your response by referencing AGENTS.md workflow.
-2. **Analyze impact**: Check against mission (secure? zero-deps?).
-3. **Propose code changes**: In the right phase/file, following coding styles (e.g., 88-char lines).
-4. **Update tests**: Add to `test_*.py`; craft archives in `conftest.py`.
-5. **Test considerations**:
-   - Run in Docker: `make docker-test`.
-   - Verify atomicity: Assert no partial files post-abort.
-   - Cover edges: Data descriptors, ZIP64, Unicode, symlinks.
-   - Regression: Reproduce bug first, then fix.
-6. **Update docs**: README.rst (examples, limits, limitations).
-7. **Security events**: Add emission if new violation type.
-
-**Workflow Template**:
-```text
-1. Reproduce issue with a new fixture in conftest.py.
-2. Fix in [phase file, e.g., _streamer.py].
-3. Add unit test in test_[phase].py.
-4. Add integration test in test_integration.py (verify no partials).
-5. Update README.rst if API/docs change.
-6. Suggest running: make docker-test.
-```
-
-**Acceptable new features**:
-- Data-descriptor ratio tracking (track compressed bytes during stream).
-- Optional recursive extraction (with `_nesting_depth` increment).
-- Windows-specific checks (e.g., reserved names).
-- More event types.
-
-**Forbidden**:
-- Adding deps.
-- Relaxing defaults.
-- Bypassing phases.
-
----
-
-## 7. Testing Rules for Agents
-
-- **All tests MUST run in Docker** (`make docker-test` or `make docker-test-env ENV=py312`).
-- **Fixtures**: Craft malicious/edge ZIPs programmatically in `conftest.py` (use `struct`/`zipfile`).
-- **Coverage**:
-  - Unit: Per phase (e.g., `test_guard.py` for static checks).
-  - Integration: End-to-end extraction, verify files/partials/events.
-- **Must-haves for new tests**:
-  - Legitimate passes.
-  - Violation raises specific exception.
-  - No disk pollution (atomic).
-- **When responding**: If suggesting code, include test snippet.
-- Coverage target: ≥95% (pytest-cov).
-
----
-
-## 8. Key Files & What Agents Should Know
-
-| File                              | Purpose for Agent                                      |
-|-----------------------------------|--------------------------------------------------------|
-| `src/safezip/_core.py`            | Usage entry: `SafeZipFile`, env overrides, events.    |
-| `src/safezip/_guard.py`           | Static checks; extend for new malformed detections.   |
-| `src/safezip/_sandbox.py`         | Path resolution; extend for new traversal types.      |
-| `src/safezip/_streamer.py`        | Runtime extraction; extend for better ratio tracking. |
-| `src/safezip/_exceptions.py`      | Custom errors; add new if needed (inherit `SafezipError`). |
-| `src/safezip/_events.py`          | Events/policies; extend enum if new policies.         |
-| `src/safezip/tests/conftest.py`   | **All** test archives crafted here (no commits).      |
-| `pyproject.toml`                  | Setup, linters (ruff/mypy), tests (pytest-cov).       |
-| `README.rst`                      | Usage examples; keep in sync with code.               |
-| `CONTRIBUTING.rst`                | Dev guidelines; follow for PRs/tests.                 |
-
----
-
-## 9. Prompt Templates You Can Use
-
-**When explaining usage:**
-> "You are an expert in secure file handling. Explain how to use safezip for [task], starting with defaults. Warn about limitations like data descriptors."
-
-**When implementing a feature:**
-> "Extend safezip with [feature]. Follow AGENTS.md workflow: Add to correct phase, update tests/docs. Preserve security."
-
-**When testing/fixing:**
-> "Reproduce [bug] with a conftest.py fixture, then fix. Add tests verifying atomicity and security events."
-
----
-
-## 10. Quick Reference — Secure Defaults
+All safezip exceptions inherit from `SafezipError`:
 
 ```python
-from safezip import SymlinkPolicy
+from safezip import (
+    safe_extract,
+    SafezipError,
+    UnsafeZipError,          # path traversal or disallowed symlink
+    CompressionRatioError,   # ZIP bomb attempt
+    FileSizeExceededError,   # member too large
+    TotalSizeExceededError,  # cumulative size exceeded
+    FileCountExceededError,  # too many entries
+    MalformedArchiveError,   # structurally invalid archive
+    NestingDepthError,       # nested archive depth exceeded
+)
+
+try:
+    safe_extract("upload.zip", "/out")
+except UnsafeZipError:
+    ...
+except CompressionRatioError:
+    ...
+except SafezipError:
+    # catch-all for any safezip violation
+    ...
+```
+
+### Secure defaults reference
+
+```python
+from safezip import SafeZipFile, SymlinkPolicy
 
 SafeZipFile(
     file,
-    max_file_size=1*1024**3,      # 1 GiB
-    max_total_size=5*1024**3,     # 5 GiB
+    max_file_size=1 * 1024**3,       # 1 GiB per member
+    max_total_size=5 * 1024**3,      # 5 GiB total
     max_files=10_000,
     max_per_member_ratio=200.0,
     max_total_ratio=200.0,
     max_nesting_depth=3,
-    symlink_policy=SymlinkPolicy.REJECT,   # default
+    symlink_policy=SymlinkPolicy.REJECT,
 )
 ```
 
-**Environment variables** (all supported):
-`SAFEZIP_MAX_*`, `SAFEZIP_SYMLINK_POLICY` (reject/ignore/resolve_internal).
+All limits are overridable via environment variables:
+
+| Variable | Type | Default |
+|---|---|---|
+| `SAFEZIP_MAX_FILE_SIZE` | int (bytes) | 1 GiB |
+| `SAFEZIP_MAX_TOTAL_SIZE` | int (bytes) | 5 GiB |
+| `SAFEZIP_MAX_FILES` | int | 10 000 |
+| `SAFEZIP_MAX_PER_MEMBER_RATIO` | float | 200.0 |
+| `SAFEZIP_MAX_TOTAL_RATIO` | float | 200.0 |
+| `SAFEZIP_MAX_NESTING_DEPTH` | int | 3 |
+| `SAFEZIP_SYMLINK_POLICY` | str | reject |
+
+Resolution order: constructor argument > environment variable > hardcoded default.
+Invalid env values are logged and silently ignored.
+
+### What safezip does not do
+
+- **Write mode** — `SafeZipFile` is read-only. It does not expose `open()`,
+  `read()`, or any write-mode methods from `zipfile.ZipFile`.
+- **Recursive extraction** — nested `.zip` members are extracted as raw files.
+  Recursion, if needed, is the caller's responsibility via `_nesting_depth`.
+- **Create OS symlinks** — `RESOLVE_INTERNAL` extracts symlink entries as
+  regular files containing the target path as bytes. See section 5.
 
 ---
 
-**You now have full context.**
+## 3. Architecture
 
-When the user says “work on safezip” or asks about usage/features, **always start by quoting the relevant section of this AGENTS.md** so the conversation stays aligned with the security-first philosophy.
+Each extraction passes through three phases in order. Each phase owns exactly
+one module. When adding a new check, identify the correct phase first.
+
+| Phase | File | Runs | Raises |
+|---|---|---|---|
+| **Guard** | `_guard.py` | On `SafeZipFile.__init__()`, before any decompression | `FileCountExceededError`, `FileSizeExceededError`, `MalformedArchiveError` |
+| **Sandbox** | `_sandbox.py` | Per member, before streaming begins | `UnsafeZipError` |
+| **Streamer** | `_streamer.py` | Per member, during decompression | `FileSizeExceededError`, `TotalSizeExceededError`, `CompressionRatioError` |
+
+**Guard** owns: file count limit, declared per-member size, ZIP64 consistency,
+null bytes in filenames.
+
+**Sandbox** owns: path traversal detection, absolute/UNC path rejection, Unicode
+NFC normalisation, null-byte rejection, path length limit, symlink policy
+(REJECT / IGNORE / RESOLVE_INTERNAL).
+
+**Streamer** owns: per-member decompressed size, cumulative total size,
+per-member ratio, cumulative ratio, atomic write contract (temp file → rename
+on success, unlink on failure).
+
+**Orchestration** (`_core.py`) — `SafeZipFile` and `safe_extract`. `_extract_one`
+calls the three phases in order per member. Environment variable resolution,
+security event emission, and symlink policy dispatch live here.
+
+### Key files
+
+| File | Purpose |
+|---|---|
+| `src/safezip/_core.py` | Public API, orchestration, env overrides, event emission |
+| `src/safezip/_guard.py` | Phase A: static pre-checks |
+| `src/safezip/_sandbox.py` | Phase B: path resolution, symlink policy |
+| `src/safezip/_streamer.py` | Phase C: streaming extraction, atomic writes |
+| `src/safezip/_exceptions.py` | Exception hierarchy (all inherit `SafezipError`) |
+| `src/safezip/_events.py` | `SecurityEvent`, `SymlinkPolicy`, callback type |
+| `src/safezip/tests/conftest.py` | All test archive fixtures |
+| `pyproject.toml` | Build, ruff, mypy, pytest-cov configuration |
+| `README.rst` | End-user documentation; keep in sync with code |
+
+---
+
+## 4. Security Principles
+
+**1. Default limits are sacred.**
+Never lower them in examples or generated code. If a user asks you to relax a
+limit, warn about the tradeoff explicitly before complying.
+
+**2. Atomicity is non-negotiable.**
+Every member must follow: temp file → all checks pass → `replace()` to
+destination. On any exception: `unlink(missing_ok=True)` the temp file. The
+destination must never be created or modified if a check fails. No partial
+files may remain on disk.
+
+**3. Never merge phase responsibilities.**
+Path checks belong in `_sandbox.py`. Static header checks in `_guard.py`.
+Runtime byte checks in `_streamer.py`. Do not add path logic to the streamer
+or size logic to the guard.
+
+**4. Zero external dependencies.**
+stdlib only. If you are considering adding an import that is not in the Python
+standard library, the answer is no.
+
+**5. Security events must not be suppressible.**
+Exceptions raised inside `on_security_event` callbacks are caught and logged,
+but the original security exception always propagates. Never let a broken
+callback silently swallow a violation.
+
+---
+
+## 5. Known Intentional Behaviors — Do Not Treat as Bugs
+
+### RESOLVE_INTERNAL extracts symlink entries as regular files
+
+ZIP entries flagged as symlinks (via `external_attr` Unix mode `S_IFLNK`) are
+written as regular files containing the link target path as bytes. Python's
+`zipfile` does not create OS symlinks. The post-extraction `check_symlink` /
+`_verify_symlink_chain` code in `_sandbox.py` is only reached if the OS creates
+an actual symlink, which does not happen in the current extraction path.
+
+This is **safe**: a regular file containing the text `"../escape.txt"` is
+harmless. The README description ("full chain verification") describes intended
+future behavior, not current behavior.
+
+**If asked to implement real symlink support:** in `_extract_one`, for
+`RESOLVE_INTERNAL` + `is_symlink_entry`, read the target bytes, call
+`os.symlink(target, dest)`, then call `check_symlink(dest, base, policy)`,
+unlink if unsafe. Add tests for both safe and escaping targets. Update README.
+
+### compress_size == 0 skips the ratio check — this is correct
+
+The ratio check in `_streamer.py` is gated on `compress_size > 0`. This is not
+a vulnerability. Python's `zipfile` uses the central directory's `compress_size`
+to control how many compressed bytes it reads. The only case where
+`compress_size == 0` reaches the streamer for a member that successfully
+decompresses is a genuinely empty member (zero bytes), for which skipping the
+ratio check is correct behavior.
+
+A crafted archive with `compress_size=0` in the central directory but non-empty
+content is rejected by Python's `zipfile` with `BadZipFile` (CRC failure) before
+the streamer is reached. This has been empirically verified. **Do not attempt to
+"fix" this skip.**
+
+### Nested archives are extracted as raw files
+
+Members with ZIP-like extensions (`.zip`, `.jar`, `.whl`, `.egg`, etc.) are
+extracted as opaque blobs. `SafeZipFile` does not auto-recurse. The
+`_nesting_depth` parameter and `NestingDepthError` exist to guard against
+runaway recursion if a caller implements manual recursion.
+
+---
+
+## 6. Agent Workflow: Adding Features or Fixing Bugs
+
+When asked to add a feature or fix a bug, follow these steps in order:
+
+1. **Check the mission** — Does the change preserve zero deps, secure defaults,
+   and the three-phase model?
+2. **Identify the correct phase** — Guard (static/header), Sandbox (path/policy),
+   or Streamer (runtime/bytes).
+3. **For bug fixes: write the regression fixture first** — Add a programmatic
+   archive fixture to `src/safezip/tests/conftest.py` that reproduces the bug.
+   The test must fail before your fix.
+4. **Implement the change** in the correct phase file.
+5. **Add/update exceptions** in `_exceptions.py` if a new error type is needed
+   (inherit from `SafezipError`).
+6. **Add event emission** in `_core.py` (`self._emit_event("event_type")`) if
+   the check fires inside `_extract_one`.
+7. **Export** new public symbols from `__init__.py` and `__all__`.
+8. **Write tests:**
+   - Unit test in `test_[phase].py` (e.g., `test_streamer.py`).
+   - Integration test in `test_integration.py` verifying no partial files remain.
+   - Legitimate-input test confirming the happy path still works.
+9. **Update `README.rst`** if the API or default limits table changed.
+10. **Suggest running:** `make docker-test`.
+
+### Acceptable new features
+
+- Windows reserved filename detection (Phase B / Sandbox).
+- Additional event types for new violation categories.
+- Optional recursive extraction (caller-controlled, guarded by `_nesting_depth`).
+- Real OS symlink creation under `RESOLVE_INTERNAL` (see section 5).
+
+### Forbidden
+
+- Adding any external dependency.
+- Lowering default limits.
+- Bypassing or merging phases.
+- Writing directly to the destination path (must use temp file).
+- Exposing write-mode or `open()`/`read()` methods on `SafeZipFile`.
+
+---
+
+## 7. Testing Rules
+
+### All tests must run inside Docker
+
+```sh
+make docker-test                   # full matrix (Python 3.10–3.14)
+make docker-test-env ENV=py312     # single version
+make docker-shell                  # interactive shell
+```
+
+Do not run `pytest` directly on the host machine. Malicious test archives must
+not touch the host filesystem.
+
+### Test layout
+
+```
+src/safezip/tests/
+    conftest.py          — all archive fixtures (add new ones here)
+    test_guard.py        — Phase A tests
+    test_sandbox.py      — Phase B tests
+    test_streamer.py     — Phase C tests
+    test_integration.py  — end-to-end tests
+```
+
+The **root `conftest.py`** (project root) is for `pytest-codeblock` documentation
+testing only. Do not add security fixtures there.
+
+### Fixture rules
+
+- Craft all test archives programmatically using `struct` or `zipfile`. Do not
+  commit pre-built `.zip` files.
+- Use `tmp_path` for all output. Never write to a fixed path.
+
+### Required assertions for every security abort test
+
+```python
+# 1. pytest.raises wraps the full operation, not just extractall
+with pytest.raises(SpecificError):
+    with SafeZipFile(...) as zf:
+        zf.extractall(dest)
+
+# 2. Atomicity: no partial files remain
+remaining = [f for f in dest.rglob("*") if not f.is_dir()]
+assert not remaining
+```
+
+### Checklist for every new security check
+
+- [ ] Fixture in `conftest.py` that triggers the violation
+- [ ] Test asserting the correct exception is raised
+- [ ] Test asserting no partial files remain after abort
+- [ ] Test asserting a legitimate archive still extracts correctly
+- [ ] Integration test in `test_integration.py`
+- [ ] Event emission tested if applicable
+
+---
+
+## 8. Coding Conventions
+
+### Formatting
+
+- Line length: **88 characters** (ruff).
+- Import sorting: `isort`; `safezip` is `known-first-party`.
+- Target: `py310`. Run `make ruff` to check. `ruff fix = true` auto-fixes on
+  commit — do not fight the formatter.
+
+### Ruff rules in effect
+
+`B`, `C4`, `E`, `F`, `G`, `I`, `ISC`, `INP`, `N`, `PERF`, `Q`, `SIM`.
+
+Explicitly ignored:
+
+| Rule | Reason |
+|---|---|
+| `G004` | f-strings in logging calls are allowed |
+| `ISC003` | implicit string concatenation across lines is allowed |
+| `PERF203` | `try/except` in loops allowed in `conftest.py` only |
+
+### Style
+
+- Every non-test module must have `__all__`, `__author__`, `__copyright__`,
+  `__license__` at module level.
+- Logger: always `logging.getLogger("safezip.security")`. Never use `__name__`.
+- Log member names truncated to 256 characters in `extra` dicts (privacy).
+- Always chain exceptions: `raise X(...) from exc`.
+- Type annotations on all public functions. Use `Optional[X]` (not `X | None`)
+  to match the existing codebase.
+- `SecurityEvent` must never include member names, paths, or filesystem
+  information — `event_type`, `archive_hash`, and `timestamp` only.
+
+### Pull requests
+
+Target the `dev` branch only. Never open a PR directly to `main`.
+
+---
+
+## 9. Prompt Templates
+
+**Explaining usage to a user:**
+> You are an expert in secure Python file handling. Explain how to use safezip
+> for [task]. Start with secure defaults. Include exception handling. Note that
+> symlink entries are extracted as regular files, not OS symlinks.
+
+**Implementing a new feature:**
+> Extend safezip with [feature]. Follow the AGENTS.md agent workflow (section 6):
+> identify the correct phase, implement, add tests verifying atomicity and events,
+> update README. Preserve zero external dependencies and secure defaults.
+
+**Fixing a bug:**
+> Reproduce [bug] with a new programmatic fixture in conftest.py. The test must
+> fail before the fix. Then fix in the correct phase file. Add tests asserting
+> the correct exception, no partial files on disk, and that legitimate archives
+> still extract successfully.
+
+**Reviewing a change:**
+> Review this safezip change against AGENTS.md: Does it preserve zero deps?
+> Does it maintain the three-phase model? Does it follow the atomic write
+> contract? Are all new checks tested with both violation and legitimate inputs?
