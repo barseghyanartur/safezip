@@ -25,7 +25,8 @@ class SymlinkPolicy(Enum):
     """Symlink entries are silently skipped."""
 
     RESOLVE_INTERNAL = "resolve_internal"
-    """Symlinks are allowed only if the full chain stays inside the base directory."""
+    """Symlink entries are extracted as regular files containing the raw link-target
+    bytes.  No OS symlink is created on disk."""
 
 
 @dataclass

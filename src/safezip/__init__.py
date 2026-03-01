@@ -14,7 +14,7 @@ from ._exceptions import (
 )
 
 __title__ = "safezip"
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
 __license__ = "MIT"

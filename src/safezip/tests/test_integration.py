@@ -387,3 +387,63 @@ class TestSymlinkPolicy:
         assert extracted.exists()
         assert not extracted.is_symlink()
         assert extracted.read_text() == "../escape.txt"
+
+
+class TestCompressSizeZero:
+    """compress_size == 0 only occurs legitimately for empty members.
+
+    Python's zipfile uses the central directory compress_size to control how
+    many bytes it reads during decompression.  A non-empty member with
+    compress_size=0 in the CD causes zipfile to read 0 bytes and then fail
+    the CRC check (BadZipFile), so it never reaches the streamer's ratio logic.
+
+    The only reachable case is a genuinely empty member, for which skipping
+    the ratio check is correct — there is nothing to decompress.
+    """
+
+    def test_empty_member_skips_ratio_check_correctly(
+        self, data_descriptor_empty_archive, tmp_path
+    ):
+        """Empty member (compress_size=0) extracts successfully even with a
+        tight ratio limit.  Skipping the ratio check is correct behaviour."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with zipfile.ZipFile(data_descriptor_empty_archive) as zf:
+            info = zf.infolist()[0]
+            assert info.compress_size == 0
+            assert info.file_size == 0
+
+        with SafeZipFile(data_descriptor_empty_archive, max_per_member_ratio=1.0) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "empty.txt").read_bytes() == b""
+
+    def test_nonempty_with_zero_cd_compress_size_rejected_by_zipfile(
+        self, data_descriptor_invalid_bomb_archive, tmp_path
+    ):
+        """A crafted archive with compress_size=0 in the CD but non-empty data
+        is rejected by Python's zipfile with BadZipFile before the streamer's
+        ratio logic is even reached.  The gap is not exploitable through
+        Python's zipfile layer."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        # Verify the CD does report compress_size=0 despite non-empty content.
+        with zipfile.ZipFile(data_descriptor_invalid_bomb_archive) as zf:
+            info = zf.infolist()[0]
+            assert info.compress_size == 0
+            assert info.file_size > 0
+
+        # SafeZipFile opens fine (Guard sees compress_size=0, file_size=2000,
+        # both within limits).  BadZipFile is raised by zipfile's CRC check
+        # during streaming — before safezip's ratio logic is ever reached.
+        with (
+            pytest.raises(zipfile.BadZipFile),
+            SafeZipFile(data_descriptor_invalid_bomb_archive) as zf,
+        ):
+            zf.extractall(dest)
+
+        # No partial files left.
+        remaining = [f for f in dest.rglob("*") if not f.is_dir()]
+        assert not remaining

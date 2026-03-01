@@ -55,7 +55,8 @@ Features
 - **ZIP64 consistency checks** - crafted archives with inconsistent ZIP64
   extra fields are rejected before decompression begins.
 - **Symlink policy** - configurable: ``REJECT`` (default), ``IGNORE``, or
-  ``RESOLVE_INTERNAL`` (full chain verification).
+  ``RESOLVE_INTERNAL`` (symlink entries are extracted as regular files; no OS
+  symlink is created on disk).
 - **Atomic writes** - every member is written to a temporary file first;
   the destination is only created after all checks pass.  No partial files
   are left on disk after a security abort.
