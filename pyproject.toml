@@ -36,6 +36,9 @@ keywords = [
     "safe",
 ]
 
+[project.scripts]
+safezip = "safezip.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/barseghyanartur/safezip/"
 Repository = "https://github.com/barseghyanartur/safezip/"
