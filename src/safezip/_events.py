@@ -26,7 +26,7 @@ class SymlinkPolicy(Enum):
 
     RESOLVE_INTERNAL = "resolve_internal"
     """Symlink entries are extracted as regular files containing the raw link-target
-    bytes.  No OS symlink is created on disk."""
+    bytes. No OS symlink is created on disk."""
 
 
 @dataclass
