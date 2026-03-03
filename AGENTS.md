@@ -26,34 +26,37 @@ and **developing/extending** the package itself.
 
 ### Simple case
 
-```python
+<!-- pytestfixture: file_zip -->
+```python name=test_simple_case
 from safezip import safe_extract
 
 # Secure defaults protect against all common attacks
-safe_extract("user_upload.zip", "/path/to/extract")
+safe_extract("path/to/file.zip", "/var/files/extracted/")
 ```
 
 ### With monitoring and custom limits
 
-```python
+<!-- pytestfixture: file_zip -->
+```python name=test_with_monitoring_and_custom_limits
 from safezip import SafeZipFile, SecurityEvent
 
 def monitor(event: SecurityEvent) -> None:
     print(f"Security event: {event.event_type}")
 
 with SafeZipFile(
-    "user_upload.zip",
+    "path/to/file.zip",
     max_file_size=100 * 1024 * 1024,  # 100 MiB per member
     on_security_event=monitor,
 ) as zf:
-    zf.extractall("/path/to/extract")
+    zf.extractall("/var/files/extracted/")
 ```
 
 ### Exception handling
 
 All safezip exceptions inherit from `SafezipError`:
 
-```python
+<!-- pytestfixture: file_zip -->
+```python name=test_exception_handling
 from safezip import (
     safe_extract,
     SafezipError,
@@ -67,7 +70,7 @@ from safezip import (
 )
 
 try:
-    safe_extract("upload.zip", "/out")
+    safe_extract("path/to/file.zip", "/var/files/extracted/")
 except UnsafeZipError:
     ...
 except CompressionRatioError:
@@ -79,11 +82,12 @@ except SafezipError:
 
 ### Secure defaults reference
 
-```python
+<!-- pytestfixture: file_zip -->
+```python name=test_secure_defaults_reference
 from safezip import SafeZipFile, SymlinkPolicy
 
 SafeZipFile(
-    file,
+    "path/to/file.zip",
     max_file_size=1 * 1024**3,       # 1 GiB per member
     max_total_size=5 * 1024**3,      # 5 GiB total
     max_files=10_000,
@@ -278,9 +282,9 @@ When asked to add a feature or fix a bug, follow these steps in order:
 ### All tests must run inside Docker
 
 ```sh
-make docker-test                   # full matrix (Python 3.10–3.14)
-make docker-test-env ENV=py312     # single version
-make docker-shell                  # interactive shell
+make test                   # full matrix (Python 3.10–3.14)
+make test-env ENV=py312     # single version
+make shell                  # interactive shell
 ```
 
 Do not run `pytest` directly on the host machine. Malicious test archives must

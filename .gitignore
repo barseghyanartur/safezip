@@ -40,4 +40,3 @@ local_settings.py
 .mypy_cache/
 benchmark.py
 src/safezip.egg-info
-ARCHITECTURE.rst
