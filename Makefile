@@ -139,11 +139,11 @@ update-version:
 	@if [ "$(UNAME_S)" = "Darwin" ]; then \
 		gsed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' pyproject.toml; \
 		gsed -i 's/__version__ = "[0-9.]\+"/__version__ = "$(VERSION)"/' src/safezip/__init__.py; \
-		gsed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' ARCHITECTURE.rst; \
+		gsed -i 's/^:Version: [0-9.]\+/:Version: $(VERSION)/' ARCHITECTURE.rst; \
 	else \
 		sed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' pyproject.toml; \
 		sed -i 's/__version__ = "[0-9.]\+"/__version__ = "$(VERSION)"/' src/safezip/__init__.py; \
-		sed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' ARCHITECTURE.rst; \
+		sed -i 's/^:Version: [0-9.]\+/:Version: $(VERSION)/' ARCHITECTURE.rst; \
 	fi
 
 # ----------------------------------------------------------------------------
