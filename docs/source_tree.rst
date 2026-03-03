@@ -10,9 +10,13 @@ the contents of each key file.
    safezip/
    ├── src
    │   └── safezip
+   │       ├── cli
+   │       │   ├── __init__.py
+   │       │   └── _main.py
    │       ├── tests
    │       │   ├── __init__.py
    │       │   ├── conftest.py
+   │       │   ├── test_cli.py
    │       │   ├── test_guard.py
    │       │   ├── test_integration.py
    │       │   ├── test_sandbox.py
@@ -26,6 +30,7 @@ the contents of each key file.
    │       ├── _streamer.py
    │       └── py.typed
    ├── .coveralls.yml
+   ├── AGENTS.md
    ├── conftest.py
    ├── CONTRIBUTING.rst
    ├── docker-compose.yml
@@ -35,12 +40,12 @@ the contents of each key file.
    ├── README.rst
    └── tox.ini
 
-.coveralls.yml
---------------
+README.rst
+----------
 
-.. literalinclude:: ../.coveralls.yml
-   :language: yaml
-   :caption: .coveralls.yml
+.. literalinclude:: ../README.rst
+   :language: rst
+   :caption: README.rst
 
 CONTRIBUTING.rst
 ----------------
@@ -49,12 +54,19 @@ CONTRIBUTING.rst
    :language: rst
    :caption: CONTRIBUTING.rst
 
-README.rst
-----------
+AGENTS.md
+---------
 
-.. literalinclude:: ../README.rst
-   :language: rst
-   :caption: README.rst
+.. literalinclude:: ../AGENTS.md
+   :language: markdown
+   :caption: AGENTS.md
+
+.coveralls.yml
+--------------
+
+.. literalinclude:: ../.coveralls.yml
+   :language: yaml
+   :caption: .coveralls.yml
 
 conftest.py
 -----------
@@ -126,6 +138,20 @@ src/safezip/_streamer.py
    :language: python
    :caption: src/safezip/_streamer.py
 
+src/safezip/cli/__init__.py
+---------------------------
+
+.. literalinclude:: ../src/safezip/cli/__init__.py
+   :language: python
+   :caption: src/safezip/cli/__init__.py
+
+src/safezip/cli/_main.py
+------------------------
+
+.. literalinclude:: ../src/safezip/cli/_main.py
+   :language: python
+   :caption: src/safezip/cli/_main.py
+
 src/safezip/tests/__init__.py
 -----------------------------
 
@@ -139,6 +165,13 @@ src/safezip/tests/conftest.py
 .. literalinclude:: ../src/safezip/tests/conftest.py
    :language: python
    :caption: src/safezip/tests/conftest.py
+
+src/safezip/tests/test_cli.py
+-----------------------------
+
+.. literalinclude:: ../src/safezip/tests/test_cli.py
+   :language: python
+   :caption: src/safezip/tests/test_cli.py
 
 src/safezip/tests/test_guard.py
 -------------------------------
