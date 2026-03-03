@@ -83,6 +83,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PWD",
         help="Decryption password for encrypted archives.",
     )
+    ext.add_argument(
+        "--recursive",
+        action="store_true",
+        default=False,
+        help="Enable recursive extraction of nested archives.",
+    )
 
     # --------------------------------------------------------------------- list
     lst = sub.add_parser("list", help="List members of a ZIP archive.")
@@ -110,6 +116,7 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         "max_per_member_ratio",
         "max_total_ratio",
         "max_nesting_depth",
+        "recursive",
     ):
         val = getattr(args, attr, None)
         if val is not None:
