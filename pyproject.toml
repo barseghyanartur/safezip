@@ -238,6 +238,12 @@ ignore = [
     "venv",
     "ARCHITECTURE.rst",
 ]
+order = [
+    "README.rst",
+    "CONTRIBUTING.rst",
+    "AGENTS.md",
+]
+
 
 [[tool.sphinx-source-tree.files]]
 output = "docs/source_tree_full.rst"
