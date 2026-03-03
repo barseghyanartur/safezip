@@ -2,7 +2,7 @@
 name = "safezip"
 description = "Hardened ZIP extraction for Python - secure by default."
 readme = "README.rst"
-version = "0.1.3"
+version = "0.1.4"
 requires-python = ">=3.10"
 dependencies = []
 authors = [

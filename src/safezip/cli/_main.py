@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import zipfile
 from pathlib import Path
 
 from safezip import SafeZipFile, SymlinkPolicy, safe_extract
@@ -139,6 +140,9 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     except FileNotFoundError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    except zipfile.BadZipFile as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
     print(f"Extracted to {dest.resolve()}")
     return 0
@@ -153,6 +157,9 @@ def _cmd_list(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except FileNotFoundError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except zipfile.BadZipFile as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

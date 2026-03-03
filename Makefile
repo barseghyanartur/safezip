@@ -1,7 +1,7 @@
 .PHONY: build test test-env shell shell-env \
         doc8 ruff mypy clean-dev clean-test clean pre-commit
 
-VERSION := 0.1.3
+VERSION := 0.1.4
 SHELL := /bin/bash
 # Makefile for project
 VENV := .venv/bin/activate
@@ -21,7 +21,7 @@ list-envs: build
 test: build
 	docker compose run --rm tox
 
-# Usage: make docker-test-env ENV=py312
+# Usage: make test-env ENV=py312
 test-env: build
 	@if [ -z "$(ENV)" ]; then \
 		echo "Usage: make docker-test-env ENV=py312"; \
@@ -32,7 +32,7 @@ test-env: build
 shell: build
 	docker compose run --rm --entrypoint bash tox
 
-# Usage: make docker-shell-env ENV=py312
+# Usage: make shell-env ENV=py312
 shell-env: build
 	@if [ -z "$(ENV)" ]; then \
 		echo "Usage: make docker-shell-env ENV=py312"; \
@@ -139,9 +139,11 @@ update-version:
 	@if [ "$(UNAME_S)" = "Darwin" ]; then \
 		gsed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' pyproject.toml; \
 		gsed -i 's/__version__ = "[0-9.]\+"/__version__ = "$(VERSION)"/' src/safezip/__init__.py; \
+		gsed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' ARCHITECTURE.rst; \
 	else \
 		sed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' pyproject.toml; \
 		sed -i 's/__version__ = "[0-9.]\+"/__version__ = "$(VERSION)"/' src/safezip/__init__.py; \
+		sed -i 's/^version = "[0-9.]\+"/version = "$(VERSION)"/' ARCHITECTURE.rst; \
 	fi
 
 # ----------------------------------------------------------------------------
