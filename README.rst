@@ -129,6 +129,53 @@ Custom limits
     ) as zf:
         zf.extractall("/var/files/extracted/")
 
+Recursive extraction
+====================
+
+When an archive contains nested ``.zip`` files, set ``recursive=True`` to
+descend into them automatically. All safety limits apply at every level. Each
+nested archive is extracted into a directory named after it (without the
+extension). The ``.zip`` file itself is never written to disk.
+
+.. pytestfixture: nested_file_zip
+.. code-block:: python
+    :name: test_recursive_extraction
+
+    from safezip import SafeZipFile
+
+    # archive.zip
+    #   readme.txt
+    #   data.zip          ← will be descended into, not extracted as a blob
+    #     report.csv
+
+    with SafeZipFile("path/to/archive.zip", recursive=True, max_nesting_depth=3) as zf:
+        zf.extractall("/var/files/extracted/")
+
+    # Result on disk:
+    #   /var/files/extracted/readme.txt
+    #   /var/files/extracted/data/report.csv
+
+With ``max_nesting_depth=0``, opening any nested archive raises
+``NestingDepthError`` before extracting a single byte from it:
+
+.. pytestfixture: nested_file_zip
+.. code-block:: python
+    :name: test_recursive_extraction_depth_limit
+
+    import pytest
+    from safezip import SafeZipFile, NestingDepthError
+
+    # archive.zip
+    #   readme.txt
+    #   data.zip          ← depth 1 exceeds max_nesting_depth=0 → NestingDepthError
+    #     report.csv
+
+    with pytest.raises(NestingDepthError):
+        with SafeZipFile(
+            "path/to/archive.zip", recursive=True, max_nesting_depth=0
+        ) as zf:
+            zf.extractall("/var/files/extracted/")
+
 Security event monitoring
 =========================
 
@@ -178,6 +225,8 @@ Default limits
 | ``max_nesting_depth``    | 3          |
 +--------------------------+------------+
 | ``symlink_policy``       | REJECT     |
++--------------------------+------------+
+| ``recursive``            | False      |
 +--------------------------+------------+
 
 Testing

@@ -119,6 +119,7 @@ class SafeZipFile:
         password: Optional[bytes] = None,
         on_security_event: SecurityEventCallback = None,
         _nesting_depth: int = 0,
+        recursive: bool = False,
     ) -> None:
         # Resolve limits: constructor arg > env var > hardcoded default
         self._max_file_size = (
@@ -159,6 +160,8 @@ class SafeZipFile:
         self._password = password
         self._on_security_event = on_security_event
         self._archive_hash = _archive_hash(file)
+        self._recursive = recursive
+        self._nesting_depth = _nesting_depth
 
         if _nesting_depth > self._max_nesting_depth:
             raise NestingDepthError(
@@ -335,13 +338,51 @@ class SafeZipFile:
                 )
                 return dest
 
-        # Nested archive guard - extract as raw file, never auto-recurse
+        # Nested archive guard
         suffix = Path(info.filename).suffix.lower()
         if suffix in _ARCHIVE_EXTENSIONS:
-            log.debug(
-                "Nested archive detected: %r - extracting as raw file, not recursing.",
-                info.filename,
-            )
+            if self._recursive:
+                tmp = dest.parent / (
+                    f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
+                )
+                try:
+                    stream_extract_member(
+                        self._zf,
+                        info,
+                        tmp,
+                        max_file_size=self._max_file_size,
+                        max_per_member_ratio=self._max_per_member_ratio,
+                        max_total_size=self._max_total_size,
+                        max_total_ratio=self._max_total_ratio,
+                        counters=counters,
+                        pwd=pwd,
+                    )
+                    nested_dest = dest.parent / dest.stem
+                    nested_dest.mkdir(parents=True, exist_ok=True)
+                    with SafeZipFile(
+                        tmp,
+                        max_file_size=self._max_file_size,
+                        max_total_size=self._max_total_size,
+                        max_files=self._max_files,
+                        max_per_member_ratio=self._max_per_member_ratio,
+                        max_total_ratio=self._max_total_ratio,
+                        max_nesting_depth=self._max_nesting_depth,
+                        symlink_policy=self._symlink_policy,
+                        password=self._password,
+                        on_security_event=self._on_security_event,
+                        recursive=True,
+                        _nesting_depth=self._nesting_depth + 1,
+                    ) as nested_zf:
+                        nested_zf.extractall(nested_dest, pwd=pwd)
+                finally:
+                    tmp.unlink(missing_ok=True)
+                return nested_dest
+            else:
+                log.debug(
+                    "Nested archive detected: %r - extracting as raw file,"
+                    " not recursing.",
+                    info.filename,
+                )
 
         # Stream-extract with all runtime monitors (Phase C)
         try:

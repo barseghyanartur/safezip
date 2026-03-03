@@ -326,6 +326,211 @@ class TestNestedArchiveGuard:
         assert not (dest / "secret.txt").exists()
 
 
+class TestRecursiveNestingDepthIntegration:
+    """Real zip-within-zip recursion is stopped at max_nesting_depth.
+
+    These tests use an actual nested archive and a realistic recursive
+    extraction helper to verify that the guard fires in practice, not just
+    when the counter is poked directly.
+    """
+
+    @staticmethod
+    def _build_nested_zip(levels: int) -> bytes:
+        """Return bytes of a zip nested *levels* deep.
+
+        The innermost zip contains ``secret.txt``.  Every outer layer wraps
+        the previous one as ``inner.zip`` plus a ``readme.txt`` so there is
+        always a regular file at each level too.
+        """
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("secret.txt", b"innermost content")
+        data = buf.getvalue()
+
+        for _ in range(levels - 1):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w") as zf:
+                zf.writestr("readme.txt", b"outer level content")
+                zf.writestr("inner.zip", data)
+            data = buf.getvalue()
+
+        return data
+
+    @staticmethod
+    def _recursive_extract(zip_path, dest, *, depth=0, max_nesting_depth=2):
+        """Minimal recursive extractor that passes *depth* to SafeZipFile.
+
+        This is the pattern a caller must follow to get nesting protection.
+        SafeZipFile raises NestingDepthError before opening the archive when
+        *depth* exceeds *max_nesting_depth*.
+        """
+        with SafeZipFile(
+            zip_path,
+            max_nesting_depth=max_nesting_depth,
+            _nesting_depth=depth,
+        ) as zf:
+            zf.extractall(dest)
+            for name in zf.namelist():
+                if name.endswith(".zip"):
+                    nested_src = dest / name
+                    nested_dest = dest / (name[:-4] + "_contents")
+                    nested_dest.mkdir()
+                    TestRecursiveNestingDepthIntegration._recursive_extract(
+                        nested_src,
+                        nested_dest,
+                        depth=depth + 1,
+                        max_nesting_depth=max_nesting_depth,
+                    )
+
+    def test_recursive_extraction_stopped_at_depth_limit(self, tmp_path):
+        """Recursion into a 3-level archive raises NestingDepthError at level 3.
+
+        Archive layout::
+
+            outer.zip          (depth 0 — opened fine)
+              readme.txt
+              inner.zip        (depth 1 — opened fine)
+                readme.txt
+                inner.zip      (depth 2 — raises, exceeds max_nesting_depth=1)
+                  secret.txt
+        """
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_nested_zip(3))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with pytest.raises(NestingDepthError):
+            self._recursive_extract(outer_p, dest, max_nesting_depth=1)
+
+    def test_recursive_extraction_succeeds_within_limit(self, tmp_path):
+        """Recursion within the depth limit extracts every level successfully.
+
+        With max_nesting_depth=2 and a 3-level archive (depths 0, 1, 2),
+        all levels are within the limit and secret.txt reaches disk.
+        """
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_nested_zip(3))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        self._recursive_extract(outer_p, dest, max_nesting_depth=2)
+
+        innermost = dest / "inner_contents" / "inner_contents" / "secret.txt"
+        assert innermost.read_bytes() == b"innermost content"
+
+
+class TestBuiltinRecursiveExtraction:
+    """SafeZipFile with recursive=True auto-descends into nested zip members."""
+
+    @staticmethod
+    def _build_zip(members: list[tuple[str, bytes]]) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for name, content in members:
+                zf.writestr(name, content)
+        return buf.getvalue()
+
+    def test_recursive_false_is_default_raw_blob(self, tmp_path):
+        """recursive=False (default) leaves nested zips as raw files."""
+        inner = self._build_zip([("secret.txt", b"inner")])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_zip([("inner.zip", inner)]))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "inner.zip").exists()
+        assert not (dest / "inner" / "secret.txt").exists()
+
+    def test_recursive_extracts_nested_content(self, tmp_path):
+        """recursive=True descends into inner.zip and extracts its content."""
+        inner = self._build_zip([("secret.txt", b"inner content")])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(
+            self._build_zip([("readme.txt", b"outer"), ("inner.zip", inner)])
+        )
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "readme.txt").read_bytes() == b"outer"
+        assert (dest / "inner" / "secret.txt").read_bytes() == b"inner content"
+        assert not (dest / "inner.zip").exists()
+
+    def test_recursive_depth_limit_raises(self, tmp_path):
+        """recursive=True stops at max_nesting_depth and raises NestingDepthError."""
+        # 3-level deep: outer -> middle.zip -> inner.zip -> secret.txt
+        innermost = self._build_zip([("secret.txt", b"deep")])
+        middle = self._build_zip([("inner.zip", innermost)])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_zip([("middle.zip", middle)]))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        # max_nesting_depth=1 allows depth 0 and 1; opening depth-2 raises
+        with (
+            pytest.raises(NestingDepthError),
+            SafeZipFile(outer_p, recursive=True, max_nesting_depth=1) as zf,
+        ):
+            zf.extractall(dest)
+
+    def test_recursive_file_size_enforced_in_nested_zip(self, tmp_path):
+        """File size limit applies inside nested zips when recursive=True."""
+        inner = self._build_zip([("big.txt", b"A" * 2000)])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_zip([("inner.zip", inner)]))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with (
+            pytest.raises(FileSizeExceededError),
+            SafeZipFile(outer_p, recursive=True, max_file_size=500) as zf,
+        ):
+            zf.extractall(dest)
+
+    def test_recursive_traversal_in_nested_zip_blocked(self, tmp_path):
+        """Path traversal inside a nested zip is blocked when recursive=True."""
+        inner = self._build_zip([("../../evil.txt", b"escaped")])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(self._build_zip([("inner.zip", inner)]))
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with (
+            pytest.raises(UnsafeZipError),
+            SafeZipFile(outer_p, recursive=True) as zf,
+        ):
+            zf.extractall(dest)
+
+        assert not (tmp_path / "evil.txt").exists()
+
+    def test_recursive_mixed_members(self, tmp_path):
+        """Regular files and nested zips are both handled correctly."""
+        inner = self._build_zip([("data.txt", b"nested data")])
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(
+            self._build_zip(
+                [
+                    ("top.txt", b"top level"),
+                    ("pkg.zip", inner),
+                ]
+            )
+        )
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "top.txt").read_bytes() == b"top level"
+        assert (dest / "pkg" / "data.txt").read_bytes() == b"nested data"
+        assert not (dest / "pkg.zip").exists()
+
+
 class TestSymlinkPolicy:
     """SafeZipFile enforces the configured SymlinkPolicy for ZIP symlink entries.
 
