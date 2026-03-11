@@ -9,7 +9,8 @@ the contents of each key file.
 
    safezip/
    ├── docs
-   │   └── conf.py
+   │   ├── conf.py
+   │   └── full_llms.rst
    ├── src
    │   └── safezip
    │       ├── cli
@@ -82,6 +83,13 @@ docs/conf.py
 .. literalinclude:: conf.py
    :language: python
    :caption: docs/conf.py
+
+docs/full_llms.rst
+------------------
+
+.. literalinclude:: full_llms.rst
+   :language: rst
+   :caption: docs/full_llms.rst
 
 pyproject.toml
 --------------

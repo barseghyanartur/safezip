@@ -254,11 +254,11 @@ order = [
 
 
 [[tool.sphinx-source-tree.files]]
-output = "docs/source_tree_full.rst"
+output = "docs/full_llms.rst"
 title = "Full project source-tree"
 
 [[tool.sphinx-source-tree.files]]
-output = "docs/source_tree.rst"
+output = "docs/llms.rst"
 title = "Project source-tree"
 ignore = [
     "*.egg-info",
