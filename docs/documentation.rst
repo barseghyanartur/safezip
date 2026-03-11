@@ -9,9 +9,9 @@ Contents:
    :maxdepth: 2
 
    index
-   security
    contributor_guidelines
-   code_of_conduct
+   security
    changelog
    package
-   source_tree
+   llms
+   code_of_conduct
