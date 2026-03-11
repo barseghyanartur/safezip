@@ -29,7 +29,6 @@ the contents of each key file.
    │       ├── _sandbox.py
    │       ├── _streamer.py
    │       └── py.typed
-   ├── .coveralls.yml
    ├── AGENTS.md
    ├── conftest.py
    ├── CONTRIBUTING.rst
@@ -60,13 +59,6 @@ AGENTS.md
 .. literalinclude:: ../AGENTS.md
    :language: markdown
    :caption: AGENTS.md
-
-.coveralls.yml
---------------
-
-.. literalinclude:: ../.coveralls.yml
-   :language: yaml
-   :caption: .coveralls.yml
 
 conftest.py
 -----------

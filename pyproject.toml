@@ -237,6 +237,14 @@ ignore = [
     "node_modules",
     "venv",
     "ARCHITECTURE.rst",
+    ".coderabbit.yaml",
+    ".coveralls",
+    "docs/full-llms.rst",
+    "docs/llms.rst",
+    "docs/contributor_guidelines.rst",
+    "docs/package.rst",
+    "docs/documentation.rst",
+    "docs/index.rst",
 ]
 order = [
     "README.rst",
@@ -303,4 +311,12 @@ ignore = [
     "examples",
     "docs",
     "ARCHITECTURE.rst",
+    ".coderabbit.yaml",
+    ".coveralls",
+    "docs/full-llms.rst",
+    "docs/llms.rst",
+    "docs/contributor_guidelines.rst",
+    "docs/package.rst",
+    "docs/documentation.rst",
+    "docs/index.rst",
 ]

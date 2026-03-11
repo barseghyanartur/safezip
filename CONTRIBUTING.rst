@@ -48,8 +48,14 @@ Virtual environment
 
 .. code-block:: sh
 
-    uv sync
-    uv pip install -e .[all]
+    make create-venv
+
+Installation
+------------
+
+.. code-block:: sh
+
+    make install
 
 Testing
 -------
@@ -59,19 +65,19 @@ of malicious test archives from reaching the host filesystem.
 
 .. code-block:: sh
 
-    make docker-test
+    make test
 
 To test a single environment:
 
 .. code-block:: sh
 
-    make docker-test-env ENV=py312
+    make test-env ENV=py312
 
 For an interactive shell inside the container:
 
 .. code-block:: sh
 
-    make docker-shell
+    make shell
 
 In any case, GitHub Actions runs the full matrix automatically on every push.
 
