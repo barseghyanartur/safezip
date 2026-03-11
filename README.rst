@@ -112,20 +112,23 @@ Or use the ``SafeZipFile`` context manager for more control:
 
 Custom limits
 =============
+See the `Default limits`_ for reference.
 
 .. pytestfixture: file_zip
 .. code-block:: python
     :name: test_custom_limits
 
-    from safezip import SafeZipFile
+    from safezip import SafeZipFile, SymlinkPolicy
 
     with SafeZipFile(
         "path/to/file.zip",
-        max_file_size=100 * 1024 * 1024,   # 100 MiB per member
-        max_total_size=500 * 1024 * 1024,  # 500 MiB total
-        max_files=1_000,
-        max_per_member_ratio=50.0,
-        max_total_ratio=50.0,
+        max_file_size=100 * 1024 * 1024,      # 100 MiB per member (default: 1 GiB)
+        max_total_size=500 * 1024 * 1024,     # 500 MiB total (default: 5 GiB)
+        max_files=1_000,                      # (default: 10 000)
+        max_per_member_ratio=50.0,            # (default: 200)
+        max_total_ratio=50.0,                 # (default: 200)
+        max_nesting_depth=1,                  # (default: 3)
+        symlink_policy=SymlinkPolicy.IGNORE,  # (default: SymlinkPolicy.REJECT)
     ) as zf:
         zf.extractall("/var/files/extracted/")
 
@@ -193,18 +196,19 @@ Security event monitoring
 
 Environment variable overrides
 ==============================
+See the `Default limits`_ for reference.
 
 All limits can be overridden without changing code:
 
 .. code-block:: sh
 
-    export SAFEZIP_MAX_FILE_SIZE=104857600    # 100 MiB
-    export SAFEZIP_MAX_TOTAL_SIZE=524288000   # 500 MiB
-    export SAFEZIP_MAX_FILES=1000
-    export SAFEZIP_MAX_PER_MEMBER_RATIO=50
-    export SAFEZIP_MAX_TOTAL_RATIO=50
-    export SAFEZIP_MAX_NESTING_DEPTH=3
-    export SAFEZIP_SYMLINK_POLICY=reject      # reject | ignore | resolve_internal
+    export SAFEZIP_MAX_FILE_SIZE=104857600    # 100 MiB (default: 1 GiB)
+    export SAFEZIP_MAX_TOTAL_SIZE=524288000   # 500 MiB (default: 5 GiB)
+    export SAFEZIP_MAX_FILES=1000             # (default: 10 000)
+    export SAFEZIP_MAX_PER_MEMBER_RATIO=50    # (default: 200)
+    export SAFEZIP_MAX_TOTAL_RATIO=50         # (default: 200)
+    export SAFEZIP_MAX_NESTING_DEPTH=1        # (default: 3)
+    export SAFEZIP_SYMLINK_POLICY=ignore      # reject | ignore | resolve_internal (default: reject)
 
 Default limits
 ==============
