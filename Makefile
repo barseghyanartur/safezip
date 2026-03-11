@@ -107,7 +107,7 @@ create-venv:
 
 # Install the project
 install: create-venv
-	source $(VENV) && uv pip install -e .[all]
+	source $(VENV) && uv sync --all-extras
 
 # ----------------------------------------------------------------------------
 # Security
