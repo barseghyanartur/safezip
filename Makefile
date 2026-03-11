@@ -24,7 +24,7 @@ test: build
 # Usage: make test-env ENV=py312
 test-env: build
 	@if [ -z "$(ENV)" ]; then \
-		echo "Usage: make docker-test-env ENV=py312"; \
+		echo "Usage: make test-env ENV=py312"; \
 		exit 1; \
 	fi
 	docker compose run --rm tox -e $(ENV)
@@ -35,7 +35,7 @@ shell: build
 # Usage: make shell-env ENV=py312
 shell-env: build
 	@if [ -z "$(ENV)" ]; then \
-		echo "Usage: make docker-shell-env ENV=py312"; \
+		echo "Usage: make shell-env ENV=py312"; \
 		exit 1; \
 	fi
 	docker compose run --rm --entrypoint bash tox -e $(ENV)
@@ -107,7 +107,7 @@ create-venv:
 
 # Install the project
 install: create-venv
-	source $(VENV) && uv pip install -e .[all]
+	source $(VENV) && uv sync --all-extras
 
 # ----------------------------------------------------------------------------
 # Security

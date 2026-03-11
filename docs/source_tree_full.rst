@@ -9,13 +9,7 @@ the contents of each key file.
 
    safezip/
    ├── docs
-   │   ├── conf.py
-   │   ├── contributor_guidelines.rst
-   │   ├── documentation.rst
-   │   ├── full-llms.rst
-   │   ├── index.rst
-   │   ├── llms.rst
-   │   └── package.rst
+   │   └── conf.py
    ├── src
    │   └── safezip
    │       ├── cli
@@ -37,7 +31,6 @@ the contents of each key file.
    │       ├── _sandbox.py
    │       ├── _streamer.py
    │       └── py.typed
-   ├── .coveralls.yml
    ├── AGENTS.md
    ├── conftest.py
    ├── CONTRIBUTING.rst
@@ -69,13 +62,6 @@ AGENTS.md
    :language: markdown
    :caption: AGENTS.md
 
-.coveralls.yml
---------------
-
-.. literalinclude:: ../.coveralls.yml
-   :language: yaml
-   :caption: .coveralls.yml
-
 conftest.py
 -----------
 
@@ -96,48 +82,6 @@ docs/conf.py
 .. literalinclude:: conf.py
    :language: python
    :caption: docs/conf.py
-
-docs/contributor_guidelines.rst
--------------------------------
-
-.. literalinclude:: contributor_guidelines.rst
-   :language: rst
-   :caption: docs/contributor_guidelines.rst
-
-docs/documentation.rst
-----------------------
-
-.. literalinclude:: documentation.rst
-   :language: rst
-   :caption: docs/documentation.rst
-
-docs/full-llms.rst
-------------------
-
-.. literalinclude:: full-llms.rst
-   :language: rst
-   :caption: docs/full-llms.rst
-
-docs/index.rst
---------------
-
-.. literalinclude:: index.rst
-   :language: rst
-   :caption: docs/index.rst
-
-docs/llms.rst
--------------
-
-.. literalinclude:: llms.rst
-   :language: rst
-   :caption: docs/llms.rst
-
-docs/package.rst
-----------------
-
-.. literalinclude:: package.rst
-   :language: rst
-   :caption: docs/package.rst
 
 pyproject.toml
 --------------
