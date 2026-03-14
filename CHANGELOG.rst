@@ -21,7 +21,20 @@ are used for versioning (schema follows below):
 
 0.1.4
 -----
-- 2026-03-01
+- 2026-03-03
+
+- **Recursive extraction**:
+  `SafeZipFile(..., recursive=True, max_nesting_depth=3)` (and `safe_extract`)
+  auto-descends into nested `.zip` files, extracting them into subdirectories.
+  All safety limits apply at every level.
+- **CLI**: New `safezip` command (`extract` + `list` subcommands) with full
+  support for all security limits, passwords, symlink policies, and
+  recursive mode.
+- **Nesting protection**: `max_nesting_depth` guard + `NestingDepthError`
+  prevents deep zip-bomb recursion.
+- **Docs & tests**: Updated README.rst/AGENTS.md with examples,
+  added `ARCHITECTURE.rst`, complete CLI + recursive integration test suites.
+- **Misc**: Simplified `Makefile`, `.gitignore` cleanup.
 
 0.1.3
 -----
