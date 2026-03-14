@@ -1,5 +1,5 @@
-Project source-tree
-===================
+Full project source-tree
+========================
 
 Below is the layout of the project (to 10 levels), followed by
 the contents of each key file.
@@ -8,6 +8,9 @@ the contents of each key file.
    :caption: Project directory layout
 
    safezip/
+   ├── docs
+   │   ├── conf.py
+   │   └── full_llms.rst
    ├── src
    │   └── safezip
    │       ├── cli
@@ -29,7 +32,6 @@ the contents of each key file.
    │       ├── _sandbox.py
    │       ├── _streamer.py
    │       └── py.typed
-   ├── .coveralls.yml
    ├── AGENTS.md
    ├── conftest.py
    ├── CONTRIBUTING.rst
@@ -61,13 +63,6 @@ AGENTS.md
    :language: markdown
    :caption: AGENTS.md
 
-.coveralls.yml
---------------
-
-.. literalinclude:: ../.coveralls.yml
-   :language: yaml
-   :caption: .coveralls.yml
-
 conftest.py
 -----------
 
@@ -81,6 +76,20 @@ docker-compose.yml
 .. literalinclude:: ../docker-compose.yml
    :language: yaml
    :caption: docker-compose.yml
+
+docs/conf.py
+------------
+
+.. literalinclude:: conf.py
+   :language: python
+   :caption: docs/conf.py
+
+docs/full_llms.rst
+------------------
+
+.. literalinclude:: full_llms.rst
+   :language: rst
+   :caption: docs/full_llms.rst
 
 pyproject.toml
 --------------
