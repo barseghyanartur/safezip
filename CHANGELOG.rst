@@ -21,7 +21,7 @@ are used for versioning (schema follows below):
 
 0.1.4
 -----
-- 2026-03-03
+2026-03-03
 
 - **Recursive extraction**:
   `SafeZipFile(..., recursive=True, max_nesting_depth=3)` (and `safe_extract`)
@@ -38,7 +38,7 @@ are used for versioning (schema follows below):
 
 0.1.3
 -----
-- 2026-03-01
+2026-03-01
 
 - Minor fixes in docs and tests.
 
