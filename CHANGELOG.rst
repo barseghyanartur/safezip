@@ -23,7 +23,9 @@ are used for versioning (schema follows below):
 -----
 2026-03-17
 
-
+- **Fifield-style zip bomb detection**: Added `ZipInspector` class to detect
+  overlapping local entries in zip archives, preventing sophisticated
+  compression-ratio attacks.
 
 0.1.4
 -----
