@@ -5,6 +5,7 @@ import logging
 import os
 import stat
 import zipfile
+from contextlib import suppress
 from pathlib import Path
 from typing import BinaryIO, Optional, Union
 
@@ -35,6 +36,25 @@ log = logging.getLogger("safezip.security")
 _ARCHIVE_EXTENSIONS = frozenset(
     {".zip", ".jar", ".war", ".ear", ".apk", ".aar", ".whl", ".egg"}
 )
+
+
+def _archive_stem(name: str) -> str:
+    """Strip the archive extension from *name*, returning the base stem.
+
+    Handles single extensions only (ZIP archives do not use compound
+    extensions like .tar.gz), but normalises consistently.
+
+    Examples::
+
+        archive.zip  → archive
+        lib.whl      → lib
+        app.jar      → app
+        data.csv     → data.csv   (non-archive extension unchanged)
+    """
+    p = Path(name)
+    if p.suffix.lower() in _ARCHIVE_EXTENSIONS:
+        return p.stem
+    return name
 
 
 def _env_int(name: str, default: int) -> int:
@@ -113,11 +133,27 @@ def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
 
 
 def _archive_hash(file: Union[str, os.PathLike, BinaryIO]) -> str:
-    """Return first 16 hex characters of SHA-256 of the archive path/name."""
+    """Return first 16 hex characters of SHA-256 of archive content (first 64 KiB).
+
+    Content-based hashing ensures different files at the same path produce
+    different hashes in SecurityEvent records.
+    """
+    h = hashlib.sha256()
     if isinstance(file, (str, os.PathLike)):
-        return hashlib.sha256(str(file).encode()).hexdigest()[:16]
-    name = getattr(file, "name", repr(file))
-    return hashlib.sha256(str(name).encode()).hexdigest()[:16]
+        try:
+            with open(file, "rb") as fh:
+                h.update(fh.read(65536))
+        except OSError:
+            h.update(str(file).encode())
+        return h.hexdigest()[:16]
+
+    pos = file.tell()
+    try:
+        h.update(file.read(65536))
+    finally:
+        with suppress(OSError):
+            file.seek(pos)
+    return h.hexdigest()[:16]
 
 
 class SafeZipFile:
@@ -273,7 +309,12 @@ class SafeZipFile:
         :raises UnsafeZipError: On path traversal, absolute paths, or symlinks.
         :raises FileSizeExceededError: If the member is too large.
         :raises CompressionRatioError: If the compression ratio is too high.
+        :raises TypeError: If path is None.
         """
+        if path is None:
+            raise TypeError(
+                "SafeZipFile.extract() requires an explicit 'path' argument."
+            )
         base = Path(path).resolve()
         counters = CumulativeCounters()
         info = (
@@ -298,7 +339,13 @@ class SafeZipFile:
         :raises FileSizeExceededError: If any member is too large.
         :raises TotalSizeExceededError: If total extracted size is too large.
         :raises CompressionRatioError: If any ratio limit is exceeded.
+        :raises TypeError: If path is None.
         """
+        if path is None:
+            raise TypeError(
+                "SafeZipFile.extractall() requires an explicit 'path' argument; "
+                "extraction to the current working directory is not permitted."
+            )
         base = Path(path).resolve()
         counters = CumulativeCounters()
         effective_pwd = pwd or self._password
@@ -405,7 +452,7 @@ class SafeZipFile:
                 )
                 # Content-based detection (avoids extension-spoofing)
                 if zipfile.is_zipfile(tmp):
-                    nested_dest = dest.parent / dest.stem
+                    nested_dest = dest.parent / _archive_stem(dest.name)
                     nested_dest.mkdir(parents=True, exist_ok=True)
                     with SafeZipFile(
                         tmp,

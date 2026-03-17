@@ -570,8 +570,8 @@ class TestBuiltinRecursiveExtraction:
         with SafeZipFile(outer_p, recursive=True) as zf:
             zf.extractall(dest)
 
-        assert (dest / "data" / "secret.txt").read_bytes() == b"inner content"
-        assert not (dest / "data.csv").exists()
+        # .csv is not a known archive extension, so directory name stays as-is
+        assert (dest / "data.csv" / "secret.txt").read_bytes() == b"inner content"
 
     def test_recursive_non_zip_with_zip_extension_not_recursed(self, tmp_path):
         """A file named .zip that is not actually a ZIP is extracted as a plain file."""
