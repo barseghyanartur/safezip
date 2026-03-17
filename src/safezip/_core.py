@@ -198,31 +198,50 @@ class SafeZipFile:
         recursive: Optional[bool] = None,
         strip_special_bits: bool = True,
     ) -> None:
-        # Resolve limits: constructor arg > env var > hardcoded default
+        # Resolve limits: constructor arg > env var > module-level default
+        # Env vars are read at runtime to support test monkeypatching
         self._max_file_size = (
-            max_file_size if max_file_size is not None else _DEFAULT_MAX_FILE_SIZE
+            max_file_size
+            if max_file_size is not None
+            else _env_int("SAFEZIP_MAX_FILE_SIZE", _DEFAULT_MAX_FILE_SIZE)
         )
         self._max_total_size = (
-            max_total_size if max_total_size is not None else _DEFAULT_MAX_TOTAL_SIZE
+            max_total_size
+            if max_total_size is not None
+            else _env_int("SAFEZIP_MAX_TOTAL_SIZE", _DEFAULT_MAX_TOTAL_SIZE)
         )
-        self._max_files = max_files if max_files is not None else _DEFAULT_MAX_FILES
+        self._max_files = (
+            max_files
+            if max_files is not None
+            else _env_int("SAFEZIP_MAX_FILES", _DEFAULT_MAX_FILES)
+        )
         self._max_per_member_ratio = (
             max_per_member_ratio
             if max_per_member_ratio is not None
-            else _DEFAULT_MAX_PER_MEMBER_RATIO
+            else _env_float(
+                "SAFEZIP_MAX_PER_MEMBER_RATIO", _DEFAULT_MAX_PER_MEMBER_RATIO
+            )
         )
         self._max_total_ratio = (
-            max_total_ratio if max_total_ratio is not None else _DEFAULT_MAX_TOTAL_RATIO
+            max_total_ratio
+            if max_total_ratio is not None
+            else _env_float("SAFEZIP_MAX_TOTAL_RATIO", _DEFAULT_MAX_TOTAL_RATIO)
         )
         self._max_nesting_depth = (
             max_nesting_depth
             if max_nesting_depth is not None
-            else _DEFAULT_MAX_NESTING_DEPTH
+            else _env_int("SAFEZIP_MAX_NESTING_DEPTH", _DEFAULT_MAX_NESTING_DEPTH)
         )
         self._symlink_policy = (
-            symlink_policy if symlink_policy is not None else _DEFAULT_SYMLINK_POLICY
+            symlink_policy
+            if symlink_policy is not None
+            else _env_symlink_policy(_DEFAULT_SYMLINK_POLICY)
         )
-        self._recursive = recursive if recursive is not None else _DEFAULT_RECURSIVE
+        self._recursive = (
+            recursive
+            if recursive is not None
+            else _env_bool("SAFEZIP_RECURSIVE", _DEFAULT_RECURSIVE)
+        )
         self._strip_special_bits = strip_special_bits
         self._password = password
         self._on_security_event = on_security_event
