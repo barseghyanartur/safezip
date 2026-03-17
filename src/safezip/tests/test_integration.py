@@ -554,6 +554,39 @@ class TestBuiltinRecursiveExtraction:
         assert (dest / "pkg" / "data.txt").read_bytes() == b"nested data"
         assert not (dest / "pkg.zip").exists()
 
+    def test_recursive_content_detection_bypasses_extension(self, tmp_path):
+        """A nested ZIP named with a non-ZIP extension is still recursed into
+        when recursive=True (content-based detection)."""
+        inner = self._build_zip([("secret.txt", b"inner content")])
+        outer_buf = io.BytesIO()
+        with zipfile.ZipFile(outer_buf, "w") as zf:
+            zf.writestr("data.csv", inner)
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(outer_buf.getvalue())
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "data" / "secret.txt").read_bytes() == b"inner content"
+        assert not (dest / "data.csv").exists()
+
+    def test_recursive_non_zip_with_zip_extension_not_recursed(self, tmp_path):
+        """A file named .zip that is not actually a ZIP is extracted as a plain file."""
+        outer_buf = io.BytesIO()
+        with zipfile.ZipFile(outer_buf, "w") as zf:
+            zf.writestr("fake.zip", b"this is not a zip file at all")
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(outer_buf.getvalue())
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "fake.zip").read_bytes() == b"this is not a zip file at all"
+
 
 class TestSymlinkPolicy:
     """SafeZipFile enforces the configured SymlinkPolicy for ZIP symlink entries.

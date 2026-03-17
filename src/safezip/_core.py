@@ -340,23 +340,35 @@ class SafeZipFile:
 
         # Nested archive guard
         suffix = Path(info.filename).suffix.lower()
-        if suffix in _ARCHIVE_EXTENSIONS:
-            if self._recursive:
-                tmp = dest.parent / (
-                    f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
+        is_archive_extension = suffix in _ARCHIVE_EXTENSIONS
+
+        # Non-recursive: keep the debug log but don't gate on content
+        if not self._recursive:
+            if is_archive_extension:
+                log.debug(
+                    "Nested archive detected: %r - extracting as raw file,"
+                    " not recursing.",
+                    info.filename,
                 )
-                try:
-                    stream_extract_member(
-                        self._zf,
-                        info,
-                        tmp,
-                        max_file_size=self._max_file_size,
-                        max_per_member_ratio=self._max_per_member_ratio,
-                        max_total_size=self._max_total_size,
-                        max_total_ratio=self._max_total_ratio,
-                        counters=counters,
-                        pwd=pwd,
-                    )
+        else:
+            # Recursive path: stream to temp first, then content-detect
+            tmp = dest.parent / (
+                f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
+            )
+            try:
+                stream_extract_member(
+                    self._zf,
+                    info,
+                    tmp,
+                    max_file_size=self._max_file_size,
+                    max_per_member_ratio=self._max_per_member_ratio,
+                    max_total_size=self._max_total_size,
+                    max_total_ratio=self._max_total_ratio,
+                    counters=counters,
+                    pwd=pwd,
+                )
+                # Content-based detection (avoids extension-spoofing)
+                if zipfile.is_zipfile(tmp):
                     nested_dest = dest.parent / dest.stem
                     nested_dest.mkdir(parents=True, exist_ok=True)
                     with SafeZipFile(
@@ -374,15 +386,13 @@ class SafeZipFile:
                         _nesting_depth=self._nesting_depth + 1,
                     ) as nested_zf:
                         nested_zf.extractall(nested_dest, pwd=pwd)
-                finally:
-                    tmp.unlink(missing_ok=True)
-                return nested_dest
-            else:
-                log.debug(
-                    "Nested archive detected: %r - extracting as raw file,"
-                    " not recursing.",
-                    info.filename,
-                )
+                    return nested_dest
+                else:
+                    # Not a ZIP — rename temp to final destination as a regular file
+                    tmp.replace(dest)
+                    return dest
+            finally:
+                tmp.unlink(missing_ok=True)
 
         # Stream-extract with all runtime monitors (Phase C)
         try:
