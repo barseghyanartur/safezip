@@ -842,7 +842,12 @@ def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
             "BinaryIO objects without a 'name' attribute."
         )
         return
-    result = detect_zip_bomb(path)
+    try:
+        result = detect_zip_bomb(path)
+    except Exception as exc:
+        raise MalformedArchiveError(
+            f"Failed to parse archive for overlap detection: {exc}"
+        ) from exc
     if result.is_bomb:
         details = "; ".join(i.detail for i in result.issues[:2])
         raise MalformedArchiveError(f"overlapping entries detected: {details}")
