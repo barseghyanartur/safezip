@@ -170,8 +170,16 @@ def parse_central_directory(
 
     for _ in range(cd_count):
         header = mm.read(46)
-        if len(header) < 46 or header[:4] != cdh_sig:
-            break
+        if len(header) < 46:
+            raise ValueError(
+                f"Truncated central directory header: expected 46 bytes, "
+                f"got {len(header)}"
+            )
+        if header[:4] != cdh_sig:
+            raise ValueError(
+                f"Invalid central directory header signature: "
+                f"expected {cdh_sig!r}, got {header[:4]!r}"
+            )
 
         compress_type = struct.unpack_from("<H", header, 10)[0]
         compressed_size32 = struct.unpack_from("<I", header, 20)[0]
