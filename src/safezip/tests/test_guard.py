@@ -1,7 +1,9 @@
 """Tests for Phase A: the Guard (pre-extraction validation)."""
 
 import io
+import struct
 import zipfile
+import zlib
 
 import pytest
 
@@ -11,6 +13,7 @@ from safezip import (
     MalformedArchiveError,
     SafeZipFile,
 )
+from safezip._guard import ScanResult, ZipInspector
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
@@ -138,3 +141,404 @@ class TestLegitimateArchive:
         with SafeZipFile(legitimate_archive) as zf:
             info = zf.getinfo("hello.txt")
         assert info.filename == "hello.txt"
+
+
+class TestOverlappingEntryDetection:
+    """Guard rejects archives with overlapping local entries (Fifield-style bombs)."""
+
+    def test_fifield_bomb_raises_malformed(self, fifield_bomb_archive):
+        with pytest.raises(MalformedArchiveError, match="overlapping"):
+            SafeZipFile(fifield_bomb_archive)
+
+    def test_fifield_bomb_no_extraction_attempted(self, fifield_bomb_archive, tmp_path):
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(fifield_bomb_archive)
+        assert list(dest.iterdir()) == []
+
+    def test_legitimate_archive_passes_overlap_check(self, legitimate_archive):
+        with SafeZipFile(legitimate_archive) as zf:
+            assert len(zf.namelist()) > 0
+
+    def test_overlap_check_does_not_decompress(self, fifield_bomb_archive, tmp_path):
+        with pytest.raises(MalformedArchiveError, match="overlapping"):
+            SafeZipFile(fifield_bomb_archive, max_per_member_ratio=100_000.0)
+
+
+def _lfh(filename: bytes, data: bytes, compress_type: int = 0) -> bytes:
+    """Build a Local File Header + data."""
+    return (
+        struct.pack(
+            "<LHHHHHLLLHH",
+            0x04034B50,
+            20,
+            0,
+            compress_type,
+            0,
+            0,
+            zlib.crc32(data) & 0xFFFFFFFF,
+            len(data),
+            len(data),
+            len(filename),
+            0,
+        )
+        + filename
+        + data
+    )
+
+
+def _cdh(
+    filename: bytes, data: bytes, local_offset: int, compress_type: int = 0
+) -> bytes:
+    """Build a Central Directory Header."""
+    return (
+        struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            compress_type,
+            0,
+            0,
+            zlib.crc32(data) & 0xFFFFFFFF,
+            len(data),
+            len(data),
+            len(filename),
+            0,
+            0,
+            0,
+            0,
+            0,
+            local_offset,
+        )
+        + filename
+    )
+
+
+def _eocd(
+    num_entries: int, cd_size: int, cd_offset: int, comment: bytes = b""
+) -> bytes:
+    """Build an End of Central Directory record."""
+    return (
+        struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            0,
+            num_entries,
+            num_entries,
+            cd_size,
+            cd_offset,
+            len(comment),
+        )
+        + comment
+    )
+
+
+def _build_zip(*files: tuple[bytes, bytes]) -> bytes:
+    """Build a well-formed zip from (filename, data) pairs."""
+    lfhs, cdhs = [], []
+    cursor = 0
+    for fname, data in files:
+        lfh = _lfh(fname, data)
+        cdhs.append(_cdh(fname, data, cursor))
+        lfhs.append(lfh)
+        cursor += len(lfh)
+
+    cd = b"".join(cdhs)
+    return b"".join(lfhs) + cd + _eocd(len(files), len(cd), cursor)
+
+
+def _build_overlap_zip(fname_a: bytes, fname_b: bytes, data: bytes) -> bytes:
+    """Build a zip where two CDH entries point to the same LFH offset."""
+    lfh = _lfh(fname_a, data)
+    cdh1 = _cdh(fname_a, data, 0)
+    cdh2 = _cdh(fname_b, data, 0)
+    cd = cdh1 + cdh2
+    return lfh + cd + _eocd(2, len(cd), len(lfh))
+
+
+class TestZipInspector:
+    """Tests for the ZipInspector overlap detection."""
+
+    def _scan(self, data: bytes) -> ScanResult:
+        return ZipInspector(io.BytesIO(data)).scan()
+
+    def test_clean_single_file(self):
+        data = _build_zip((b"readme.txt", b"hello"))
+        result = self._scan(data)
+        assert result.is_bomb is False
+
+    def test_clean_two_files_sequential(self):
+        data = _build_zip(
+            (b"a.txt", b"first file contents"),
+            (b"b.txt", b"second file contents"),
+        )
+        assert self._scan(data).is_bomb is False
+
+    def test_clean_many_files(self):
+        files = [(f"file{i}.txt".encode(), f"content {i}".encode()) for i in range(50)]
+        data = _build_zip(*files)
+        assert self._scan(data).is_bomb is False
+
+    def test_clean_empty_file_entry(self):
+        data = _build_zip((b"empty", b""))
+        assert self._scan(data).is_bomb is False
+
+    def test_overlap_two_cdh_same_offset(self):
+        data = _build_overlap_zip(b"a", b"b", b"kernel data")
+        assert self._scan(data).is_bomb is True
+
+    def test_overlap_detail_is_populated(self):
+        data = _build_overlap_zip(b"x", b"y", b"data")
+        result = self._scan(data)
+        assert result.is_bomb is True
+        assert result.overlap_detail is not None
+
+    def test_invalid_not_a_zip(self):
+        result = self._scan(b"this is not a zip file at all")
+        assert result.is_bomb is None
+
+    def test_invalid_empty_bytes(self):
+        result = self._scan(b"")
+        assert result.is_bomb is None
+
+    def test_invalid_truncated_eocd(self):
+        result = self._scan(b"PK\x05\x06\x00\x00")
+        assert result.is_bomb is None
+
+    def test_invalid_garbage_with_pk_bytes(self):
+        result = self._scan(b"\x00" * 100 + b"PK\x05\x06" + b"\xff" * 18)
+        assert result.is_bomb is None
+
+    def test_invalid_cdh_signature_mismatch(self):
+        raw = bytearray(_build_zip((b"f", b"data")))
+        cdh_pos = raw.find(b"PK\x01\x02")
+        raw[cdh_pos] = 0xFF
+        assert self._scan(bytes(raw)).is_bomb is None
+
+    def test_invalid_lfh_signature_mismatch(self):
+        raw = bytearray(_build_zip((b"f", b"data")))
+        raw[0] = 0xFF
+        assert self._scan(bytes(raw)).is_bomb is None
+
+    def test_gap_does_not_trigger_bomb(self):
+        gap = b"\x00" * 16
+        lfh1 = _lfh(b"a", b"data1")
+        lfh2 = _lfh(b"b", b"data2")
+        off1 = 0
+        off2 = len(lfh1) + len(gap)
+        cdh1 = _cdh(b"a", b"data1", off1)
+        cdh2 = _cdh(b"b", b"data2", off2)
+        cd = cdh1 + cdh2
+        raw = lfh1 + gap + lfh2 + cd + _eocd(2, len(cd), off2 + len(lfh2))
+        assert self._scan(raw).is_bomb is False
+
+    def test_leading_bytes_not_a_bomb(self):
+        prefix = b"\x00" * 32
+        lfh = _lfh(b"x", b"payload")
+        cdh = _cdh(b"x", b"payload", len(prefix))
+        cd = cdh
+        raw = prefix + lfh + cd + _eocd(1, len(cd), len(prefix) + len(lfh))
+        assert self._scan(raw).is_bomb is False
+
+    def test_zip_with_comment(self):
+        raw = _build_zip((b"x.txt", b"data"))
+        eocd_pos = raw.rfind(b"PK\x05\x06")
+        comment = b"this is a zip comment"
+        head = raw[:eocd_pos]
+        eocd = raw[eocd_pos:]
+        new_eocd = eocd[:20] + struct.pack("<H", len(comment)) + comment
+        assert self._scan(head + new_eocd).is_bomb is False
+
+    def test_invalid_split_across_disks(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            1,
+            1,
+            1,
+            len(cd),
+            0,
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_eocd_entries_mismatch(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            0,
+            1,
+            2,
+            len(cd),
+            len(lfh),
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_eocd_cd_extends_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            0,
+            1,
+            1,
+            len(cd) + 1000,
+            len(lfh),
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cd_extends_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        raw = lfh + cd + cd + _eocd(2, len(cd) * 2, len(lfh))
+        result = self._scan(raw)
+        assert result.is_bomb is not False
+
+    def test_invalid_local_offset_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_bad = _cdh(b"a", b"data", 999999)
+        cd = cdh_bad
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cdh_variable_field_truncated(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            4,
+            4,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        cdh = cdh_base + b"a"
+        raw = lfh + cdh + _eocd(1, len(cdh), len(lfh))
+        assert self._scan(raw).is_bomb is not True
+
+    def test_invalid_lfh_signature_invalid(self):
+        lfh = _lfh(b"a", b"data")
+        raw_lfh = bytearray(lfh)
+        raw_lfh[0] = 0xFF
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        raw = bytes(raw_lfh) + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cdh_disk_nonzero(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = (
+            struct.pack(
+                "<LHHHHHHLLLHHHHHLL",
+                0x02014B50,
+                20,
+                20,
+                0,
+                0,
+                0,
+                0,
+                zlib.crc32(b"data") & 0xFFFFFFFF,
+                4,
+                4,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+            + b"a"
+        )
+        cdh = cdh_base
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is not True
+
+    def test_cdh_extra_field_truncated(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            4,
+            4,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        extra = struct.pack("<HH", 0x0001, 4)
+        cdh = cdh_base + b"filename" + extra
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_cdh_zip64_extra_invalid_size(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            0xFFFFFFFF,
+            0xFFFFFFFF,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0xFFFFFFFF,
+        )
+        extra = struct.pack("<HHQ", 0x0001, 4, 100)
+        cdh = cdh_base + b"filename" + extra
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None

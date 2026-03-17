@@ -19,6 +19,14 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.1.5
+-----
+2026-03-17
+
+- **Fifield-style zip bomb detection**: Added `ZipInspector` class to detect
+  overlapping local entries in zip archives, preventing sophisticated
+  compression-ratio attacks.
+
 0.1.4
 -----
 2026-03-03
