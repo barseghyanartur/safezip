@@ -74,6 +74,19 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _sanitise_mode(path: Path, *, strip_special_bits: bool = True) -> None:
+    """Strip setuid/setgid/sticky bits from *path* if requested."""
+    if not strip_special_bits:
+        return
+    try:
+        current = path.stat().st_mode
+        safe = current & ~(stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX)
+        if safe != current:
+            os.chmod(path, safe)
+    except OSError:
+        pass  # best-effort; extraction already succeeded
+
+
 def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
     """Read SAFEZIP_SYMLINK_POLICY from the environment.
 
@@ -137,6 +150,7 @@ class SafeZipFile:
         on_security_event: SecurityEventCallback = None,
         _nesting_depth: int = 0,
         recursive: Optional[bool] = None,
+        strip_special_bits: bool = True,
     ) -> None:
         # Resolve limits: constructor arg > env var > hardcoded default
         self._max_file_size = (
@@ -179,6 +193,7 @@ class SafeZipFile:
             if recursive is not None
             else _env_bool("SAFEZIP_RECURSIVE", False)
         )
+        self._strip_special_bits = strip_special_bits
         self._password = password
         self._on_security_event = on_security_event
         self._archive_hash = _archive_hash(file)
@@ -461,6 +476,10 @@ class SafeZipFile:
                 },
             )
             raise
+
+        # Post-extraction permission sanitisation
+        if not dest.is_symlink():
+            _sanitise_mode(dest, strip_special_bits=self._strip_special_bits)
 
         # Post-extraction symlink check (RESOLVE_INTERNAL policy)
         if dest.is_symlink() and self._symlink_policy == SymlinkPolicy.RESOLVE_INTERNAL:

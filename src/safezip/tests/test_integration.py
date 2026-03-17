@@ -1,6 +1,7 @@
 """End-to-end integration tests using real crafted malicious archives."""
 
 import io
+import stat
 import zipfile
 
 import pytest
@@ -586,6 +587,29 @@ class TestBuiltinRecursiveExtraction:
             zf.extractall(dest)
 
         assert (dest / "fake.zip").read_bytes() == b"this is not a zip file at all"
+
+
+class TestPermissionSanitisation:
+    """Dangerous Unix permission bits are stripped from extracted files."""
+
+    def test_setuid_stripped_by_default(self, setuid_archive, tmp_path):
+        """setuid bit is stripped by default."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(setuid_archive) as zf:
+            zf.extractall(dest)
+        mode = (dest / "suid_binary").stat().st_mode
+        assert not (mode & stat.S_ISUID), "setuid bit must be stripped by default"
+
+    def test_normal_permissions_unaffected(self, legitimate_archive, tmp_path):
+        """Stripping special bits does not affect normal file access."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(legitimate_archive) as zf:
+            zf.extractall(dest)
+        for f in dest.rglob("*"):
+            if f.is_file():
+                assert f.stat().st_mode & stat.S_IRUSR
 
 
 class TestSymlinkPolicy:
