@@ -277,7 +277,7 @@ Public API
 .. code-block:: python
     :name: safe_zipfile
 
-        class SafeZipFile:
+    class SafeZipFile:
         def __init__(
             self,
             file,
