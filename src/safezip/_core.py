@@ -132,6 +132,16 @@ def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
     return resolved
 
 
+_DEFAULT_MAX_FILE_SIZE: int = _env_int("SAFEZIP_MAX_FILE_SIZE", 1 * 1024**3)
+_DEFAULT_MAX_TOTAL_SIZE: int = _env_int("SAFEZIP_MAX_TOTAL_SIZE", 5 * 1024**3)
+_DEFAULT_MAX_FILES: int = _env_int("SAFEZIP_MAX_FILES", 10_000)
+_DEFAULT_MAX_PER_MEMBER_RATIO: float = _env_float("SAFEZIP_MAX_PER_MEMBER_RATIO", 200.0)
+_DEFAULT_MAX_TOTAL_RATIO: float = _env_float("SAFEZIP_MAX_TOTAL_RATIO", 200.0)
+_DEFAULT_MAX_NESTING_DEPTH: int = _env_int("SAFEZIP_MAX_NESTING_DEPTH", 3)
+_DEFAULT_SYMLINK_POLICY: SymlinkPolicy = _env_symlink_policy(SymlinkPolicy.REJECT)
+_DEFAULT_RECURSIVE: bool = _env_bool("SAFEZIP_RECURSIVE", False)
+
+
 def _archive_hash(file: Union[str, os.PathLike, BinaryIO]) -> str:
     """Return first 16 hex characters of SHA-256 of archive content (first 64 KiB).
 
@@ -190,45 +200,29 @@ class SafeZipFile:
     ) -> None:
         # Resolve limits: constructor arg > env var > hardcoded default
         self._max_file_size = (
-            max_file_size
-            if max_file_size is not None
-            else _env_int("SAFEZIP_MAX_FILE_SIZE", 1 * 1024**3)
+            max_file_size if max_file_size is not None else _DEFAULT_MAX_FILE_SIZE
         )
         self._max_total_size = (
-            max_total_size
-            if max_total_size is not None
-            else _env_int("SAFEZIP_MAX_TOTAL_SIZE", 5 * 1024**3)
+            max_total_size if max_total_size is not None else _DEFAULT_MAX_TOTAL_SIZE
         )
-        self._max_files = (
-            max_files
-            if max_files is not None
-            else _env_int("SAFEZIP_MAX_FILES", 10_000)
-        )
+        self._max_files = max_files if max_files is not None else _DEFAULT_MAX_FILES
         self._max_per_member_ratio = (
             max_per_member_ratio
             if max_per_member_ratio is not None
-            else _env_float("SAFEZIP_MAX_PER_MEMBER_RATIO", 200.0)
+            else _DEFAULT_MAX_PER_MEMBER_RATIO
         )
         self._max_total_ratio = (
-            max_total_ratio
-            if max_total_ratio is not None
-            else _env_float("SAFEZIP_MAX_TOTAL_RATIO", 200.0)
+            max_total_ratio if max_total_ratio is not None else _DEFAULT_MAX_TOTAL_RATIO
         )
         self._max_nesting_depth = (
             max_nesting_depth
             if max_nesting_depth is not None
-            else _env_int("SAFEZIP_MAX_NESTING_DEPTH", 3)
+            else _DEFAULT_MAX_NESTING_DEPTH
         )
         self._symlink_policy = (
-            symlink_policy
-            if symlink_policy is not None
-            else _env_symlink_policy(SymlinkPolicy.REJECT)
+            symlink_policy if symlink_policy is not None else _DEFAULT_SYMLINK_POLICY
         )
-        self._recursive = (
-            recursive
-            if recursive is not None
-            else _env_bool("SAFEZIP_RECURSIVE", False)
-        )
+        self._recursive = recursive if recursive is not None else _DEFAULT_RECURSIVE
         self._strip_special_bits = strip_special_bits
         self._password = password
         self._on_security_event = on_security_event
@@ -236,6 +230,16 @@ class SafeZipFile:
         self._nesting_depth = _nesting_depth
 
         if _nesting_depth > self._max_nesting_depth:
+            self._emit_event("nesting_depth_exceeded")
+            log.warning(
+                "Nesting depth limit exceeded",
+                extra={
+                    "event": "nesting_depth_exceeded",
+                    "nesting_depth": _nesting_depth,
+                    "max_nesting_depth": self._max_nesting_depth,
+                    "archive_hash": self._archive_hash,
+                },
+            )
             raise NestingDepthError(
                 f"Nested archive depth {_nesting_depth} exceeds "
                 f"max_nesting_depth={self._max_nesting_depth}."
