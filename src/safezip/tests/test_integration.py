@@ -322,6 +322,18 @@ class TestNestingDepthLimit:
         with pytest.raises(NestingDepthError):
             SafeZipFile(legitimate_archive, _nesting_depth=2)
 
+    def test_nesting_depth_exceeded_event(self, legitimate_archive):
+        """nesting_depth_exceeded event is emitted when depth exceeds limit."""
+        events = []
+        with pytest.raises(NestingDepthError):
+            SafeZipFile(
+                legitimate_archive,
+                max_nesting_depth=1,
+                _nesting_depth=2,
+                on_security_event=events.append,
+            )
+        assert any(e.event_type == "nesting_depth_exceeded" for e in events)
+
 
 class TestNestedArchiveGuard:
     """Nested archive members are extracted as raw files, not recursed into."""
@@ -733,3 +745,14 @@ class TestCompressSizeZero:
         # No partial files left.
         remaining = [f for f in dest.rglob("*") if not f.is_dir()]
         assert not remaining
+
+
+class TestEnvVarHandling:
+    """Environment variable parsing edge cases."""
+
+    def test_invalid_symlink_policy_env(self, legitimate_archive, monkeypatch, caplog):
+        """Invalid symlink policy is logged and defaults to REJECT."""
+        monkeypatch.setenv("SAFEZIP_SYMLINK_POLICY", "invalid_policy")
+        with SafeZipFile(legitimate_archive, symlink_policy=None) as zf:
+            assert zf._symlink_policy == SymlinkPolicy.REJECT
+        assert "Ignoring unrecognised" in caplog.text
