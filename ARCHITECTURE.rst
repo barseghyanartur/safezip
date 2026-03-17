@@ -92,7 +92,7 @@ Checks
     ``MalformedArchiveError`` before the Guard runs.
 
 Partially trusted in the Guard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **Reported file sizes**: used for early rejection (if a declared size already
   exceeds ``max_file_size``, the archive is rejected before decompression).
