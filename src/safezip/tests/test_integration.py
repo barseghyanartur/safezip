@@ -140,6 +140,30 @@ class TestMalformedArchive:
             SafeZipFile(zip64_inconsistency_archive)
 
 
+class TestFifieldBomb:
+    """End-to-end: Fifield-style zip bomb is blocked at Guard phase."""
+
+    def test_fifield_bomb_blocked_end_to_end(self, fifield_bomb_archive, tmp_path):
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with (
+            pytest.raises(MalformedArchiveError),
+            SafeZipFile(fifield_bomb_archive) as zf,
+        ):
+            zf.extractall(dest)
+        remaining = [f for f in dest.rglob("*") if not f.is_dir()]
+        assert not remaining
+
+    def test_security_event_fires_on_fifield_bomb(self, fifield_bomb_archive, tmp_path):
+        """on_security_event callback receives 'malformed_archive' for Fifield bomb."""
+        events = []
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(fifield_bomb_archive, on_security_event=events.append)
+        assert any(e.event_type == "malformed_archive" for e in events)
+
+
 class TestSecurityEventCoverage:
     """on_security_event callback fires for all security violation types."""
 

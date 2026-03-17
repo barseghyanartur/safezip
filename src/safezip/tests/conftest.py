@@ -21,6 +21,7 @@ __all__ = (
     "zip64_inconsistency_archive",
     "legitimate_archive",
     "symlink_archive",
+    "fifield_bomb_archive",
 )
 
 
@@ -478,4 +479,95 @@ def data_descriptor_invalid_bomb_archive(tmp_path):
     archive_bytes = local_with_desc + central_header + eocd
     p = tmp_path / "dd_invalid_bomb.zip"
     p.write_bytes(archive_bytes)
+    return p
+
+
+@pytest.fixture()
+def fifield_bomb_archive(tmp_path):
+    """A Fifield-style zip bomb: multiple central directory entries all pointing
+    to the same compressed local entry (overlapping spans).
+
+    Structure:
+      - One real local entry at offset 0 containing 200 bytes of zeros.
+      - Central directory with 3 entries, all with local_header_offset=0,
+        so their spans all overlap the single local entry.
+
+    This is structurally invalid per the ZIP specification and should be
+    detected and rejected by _check_overlapping_entries before any
+    decompression occurs.
+    """
+    content = b"\x00" * 200
+    compressed = zlib.compress(content)[2:-4]
+    crc = zlib.crc32(content) & 0xFFFFFFFF
+    comp_size = len(compressed)
+    uncomp_size = len(content)
+
+    fname = b"data.bin"
+    fname_len = len(fname)
+
+    local_header = (
+        struct.pack(
+            "<4s2H3H4s2I2H",
+            b"PK\x03\x04",
+            20,
+            0,
+            8,
+            0,
+            0,
+            struct.pack("<I", crc),
+            comp_size,
+            uncomp_size,
+            fname_len,
+            0,
+        )
+        + fname
+        + compressed
+    )
+
+    local_offset = 0
+
+    def make_cd_entry(offset):
+        return (
+            struct.pack(
+                "<4s6H4s2I5H2I",
+                b"PK\x01\x02",
+                0x031E,
+                20,
+                0,
+                8,
+                0,
+                0,
+                struct.pack("<I", crc),
+                comp_size,
+                uncomp_size,
+                fname_len,
+                0,
+                0,
+                0,
+                0,
+                0,
+                offset,
+            )
+            + fname
+        )
+
+    cd = make_cd_entry(local_offset) * 3
+    cd_offset = len(local_header)
+    cd_size = len(cd)
+
+    eocd = struct.pack(
+        "<4s4H2IH",
+        b"PK\x05\x06",
+        0,
+        0,
+        3,
+        3,
+        cd_size,
+        cd_offset,
+        0,
+    )
+
+    data = local_header + cd + eocd
+    p = tmp_path / "fifield_bomb.zip"
+    p.write_bytes(data)
     return p
