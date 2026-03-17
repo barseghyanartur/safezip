@@ -772,3 +772,15 @@ class TestEnvVarHandling:
         with SafeZipFile(legitimate_archive, symlink_policy=None) as zf:
             assert zf._symlink_policy == SymlinkPolicy.REJECT
         assert "Ignoring unrecognised" in caplog.text
+
+    def test_env_var_read_at_import_time(self, monkeypatch):
+        """Changing env vars after import does not affect cached defaults.
+
+        The module-level singletons (_DEFAULT_*) are evaluated once at import time.
+        Late env changes do not alter limits on new SafeZipFile instances.
+        """
+        import safezip._core as _core
+
+        original_default = _core._DEFAULT_MAX_FILES
+        monkeypatch.setenv("SAFEZIP_MAX_FILES", "99")
+        assert original_default == _core._DEFAULT_MAX_FILES
