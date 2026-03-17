@@ -57,6 +57,23 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    if val.lower() in ("1", "true", "yes", "on"):
+        return True
+    if val.lower() in ("0", "false", "no", "off"):
+        return False
+    log.warning(
+        "Ignoring unrecognised %s value %r; using default %r.",
+        name,
+        val,
+        default,
+    )
+    return default
+
+
 def _env_symlink_policy(default: SymlinkPolicy) -> SymlinkPolicy:
     """Read SAFEZIP_SYMLINK_POLICY from the environment.
 
@@ -119,7 +136,7 @@ class SafeZipFile:
         password: Optional[bytes] = None,
         on_security_event: SecurityEventCallback = None,
         _nesting_depth: int = 0,
-        recursive: bool = False,
+        recursive: Optional[bool] = None,
     ) -> None:
         # Resolve limits: constructor arg > env var > hardcoded default
         self._max_file_size = (
@@ -157,10 +174,14 @@ class SafeZipFile:
             if symlink_policy is not None
             else _env_symlink_policy(SymlinkPolicy.REJECT)
         )
+        self._recursive = (
+            recursive
+            if recursive is not None
+            else _env_bool("SAFEZIP_RECURSIVE", False)
+        )
         self._password = password
         self._on_security_event = on_security_event
         self._archive_hash = _archive_hash(file)
-        self._recursive = recursive
         self._nesting_depth = _nesting_depth
 
         if _nesting_depth > self._max_nesting_depth:
