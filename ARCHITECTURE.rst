@@ -104,9 +104,13 @@ Partially trusted in the Guard
   central directory and each entry's local header to compute the byte span
   occupied by every entry. If any two spans overlap, the archive is rejected
   as a likely Fifield-style zip bomb before any decompression begins. This
-  check uses the ``ZipInspector`` class in ``_guard.py``. Detection emits the
-  ``malformed_archive`` security event. No configuration options are exposed
-  for this check — it is always enabled when the archive is opened.
+  check uses the ``detect_zip_bomb()`` function in ``_guard.py``, which
+  implements full Fifield 2019 detection including: full-overlap,
+  quoted-overlap (giant-steps), extra-field quoting, Zip64 extensions,
+  bzip2 variants, and per-file/aggregate compression ratio limits.
+  Detection emits the ``malformed_archive`` security event. No configuration
+  options are exposed for this check — it is always enabled when the archive
+  is opened.
 
 Phase B — The Sandbox (Path Manager)
 ------------------------------------
