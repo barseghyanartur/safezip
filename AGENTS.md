@@ -336,6 +336,12 @@ assert not remaining
 
 ## 8. Coding Conventions
 
+Run all linting checks:
+
+```sh
+make pre-commit
+```
+
 ### Formatting
 
 - Line length: **88 characters** (ruff).
