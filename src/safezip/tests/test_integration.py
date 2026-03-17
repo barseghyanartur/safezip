@@ -124,6 +124,22 @@ class TestExplicitPathRequirement:
         ):
             zf.extractall(None)
 
+    def test_extract_with_none_path_raises(self, legitimate_archive, tmp_path):
+        """Passing None as path to extract() raises TypeError."""
+        with SafeZipFile(legitimate_archive) as zf, pytest.raises(TypeError):
+            zf.extract("hello.txt", None)
+
+    def test_extractall_with_members_list(self, legitimate_archive, tmp_path):
+        """extractall with a members list extracts only those members."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(legitimate_archive) as zf:
+            zf.extractall(dest, members=["hello.txt"])
+        # Only hello.txt should exist
+        assert (dest / "hello.txt").exists()
+        contents = list(dest.rglob("*"))
+        assert len(contents) == 1
+
 
 class TestMalformedArchive:
     """Structurally invalid archives raise MalformedArchiveError."""
