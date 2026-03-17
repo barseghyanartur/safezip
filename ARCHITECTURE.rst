@@ -226,6 +226,12 @@ opaque blobs: members whose filename ends with ``.zip``, ``.jar``, ``.war``,
 ``.ear``, or any other extension in the hardcoded ``_ARCHIVE_EXTENSIONS`` set
 are streamed to disk as raw files. No inner content is decompressed.
 
+When ``recursive=True``, ``SafeZipFile`` performs **content-based detection**:
+the nested archive is first streamed to a temporary file, then checked using
+``zipfile.is_zipfile()`` to determine if it's actually a ZIP. This prevents
+attackers from bypassing security by using misleading extensions (e.g., a file
+named ``data.csv`` that is actually a ZIP archive).
+
 When ``recursive=True``, ``SafeZipFile`` descends into each nested archive
 automatically:
 
@@ -260,7 +266,7 @@ Public API
 .. code-block:: python
     :name: safe_zipfile
 
-    class SafeZipFile:
+        class SafeZipFile:
         def __init__(
             self,
             file,
@@ -278,6 +284,7 @@ Public API
             password: Optional[bytes] = None,
             on_security_event: Optional[Callable[[SecurityEvent], None]] = None,
             recursive: bool = False,
+            strip_special_bits: bool = True,
         ): ...
 
         def extract(
@@ -344,6 +351,20 @@ the constructor argument taking precedence:
 | Environment variable                   | Corresponding parameter            |
 +========================================+====================================+
 | ``SAFEZIP_MAX_FILE_SIZE``              | ``max_file_size``                  |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_MAX_TOTAL_SIZE``             | ``max_total_size``                 |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_MAX_FILES``                  | ``max_files``                      |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_MAX_PER_MEMBER_RATIO``       | ``max_per_member_ratio``           |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_MAX_TOTAL_RATIO``            | ``max_total_ratio``                |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_MAX_NESTING_DEPTH``          | ``max_nesting_depth``              |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_SYMLINK_POLICY``             | ``symlink_policy``                 |
++----------------------------------------+------------------------------------+
+| ``SAFEZIP_RECURSIVE``                  | ``recursive``                      |
 +----------------------------------------+------------------------------------+
 | ``SAFEZIP_MAX_TOTAL_SIZE``             | ``max_total_size``                 |
 +----------------------------------------+------------------------------------+
@@ -481,6 +502,8 @@ Emitted ``event_type`` values:
 +------------------------------+----------------------------------------------+
 | ``malformed_archive``        | Structural anomaly detected in Guard phase   |
 +------------------------------+----------------------------------------------+
+| ``nesting_depth_exceeded``   | Nested archive depth exceeds limit           |
++------------------------------+----------------------------------------------+
 
 Callback error handling
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -534,6 +557,11 @@ Defaults Rationale
      - REJECT
      - Symlinks in untrusted archives are almost always malicious. Users who
        need symlinks should opt in explicitly.
+   * - ``strip_special_bits``
+     - True
+     - Strip setuid, setgid, and sticky bits from extracted files. Protects
+       against archives that try to preserve executable permissions on malicious
+       scripts.
 
 ----
 
