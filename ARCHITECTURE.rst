@@ -170,7 +170,7 @@ passed all checks. If an exception is raised at any point, the temporary file
 is deleted.
 
 Phase C — The Streamer (Runtime Enforcement)
----------------------------------------------
+--------------------------------------------
 
 Role
 ~~~~
@@ -305,7 +305,7 @@ Public API
         def __exit__(self, *args) -> None: ...
 
 Intentionally omitted methods
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The following ``zipfile.ZipFile`` methods are **not** exposed:
 
@@ -318,7 +318,7 @@ If a caller needs lower-level access, they use ``zipfile.ZipFile`` directly,
 accepting the associated risks.
 
 ``safe_extract`` convenience function
---------------------------------------
+-------------------------------------
 
 A module-level convenience function for the common single-call use case:
 
@@ -334,7 +334,7 @@ A module-level convenience function for the common single-call use case:
 ----
 
 Configuration via Environment Variables
-=========================================
+=======================================
 
 In containerised deployments, constructor arguments may not be accessible. All
 limits (numeric and policy) accept overrides from environment variables, with
@@ -361,7 +361,7 @@ the constructor argument taking precedence:
 ----
 
 Exception Hierarchy
-====================
+===================
 
 All exceptions inherit from ``SafezipError`` so callers can catch the package's
 entire error surface with a single ``except`` clause:
@@ -410,7 +410,7 @@ Optional structured JSON emission is available by attaching Python's
 required inside ``safezip``.
 
 ``on_security_event`` callback
--------------------------------
+------------------------------
 
 An optional callback that receives a ``SecurityEvent`` object every
 time ``safezip`` detects a security event (path traversal, ratio violation,
@@ -541,7 +541,7 @@ Testing Strategy
 ================
 
 Principle: No Mocks, No Stubs
-------------------------------
+-----------------------------
 
 All security tests use real, crafted malicious archive files. Test archives are
 generated programmatically in a ``conftest.py`` fixture using
@@ -553,7 +553,7 @@ Test cases
 ----------
 
 ZipSlip — relative path traversal
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_slip_relative
@@ -563,7 +563,7 @@ ZipSlip — relative path traversal
     # Expected: UnsafeZipError raised before any bytes reach the filesystem.
 
 ZipSlip — absolute path
-~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_slip_absolute
@@ -572,7 +572,7 @@ ZipSlip — absolute path
     # Expected: UnsafeZipError.
 
 ZipSlip — Unicode normalisation
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_slip_unicode
@@ -585,7 +585,7 @@ ZipSlip — Unicode normalisation
     # Expected: UnsafeZipError.
 
 ZIP bomb — high compression ratio
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_bomb_compression_ratio
@@ -595,7 +595,7 @@ ZIP bomb — high compression ratio
     # Expected: CompressionRatioError before extraction completes.
 
 ZIP bomb — header size lie
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_bomb_header_size_lie
@@ -606,7 +606,7 @@ ZIP bomb — header size lie
     # Expected: FileSizeExceededError. Confirm no partial file remains on disk.
 
 ZIP bomb — many small files
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: zip_bomb_many_files
@@ -626,7 +626,7 @@ Symlink rejection
     # With SYMLINK_RESOLVE_INTERNAL: regular files are extracted normally.
 
 Nested archive depth limit
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: nested_archive_depth
@@ -648,7 +648,7 @@ ZIP64 overflow
     # Expected: MalformedArchiveError during Guard phase.
 
 Null byte in filename
-~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: null_byte_filename
@@ -658,7 +658,7 @@ Null byte in filename
     # contains no traversal components and extraction proceeds safely.
 
 Atomic write — cleanup on failure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
     :name: atomic_write_cleanup
@@ -679,7 +679,7 @@ Explicit path requirement
 ----
 
 Distribution and Packaging
-===========================
+==========================
 
 - **Python version:** 3.10+.  The code uses ``typing.Optional`` /
   ``typing.Union`` for compatibility; ``if``/``elif`` chains are used for
@@ -720,7 +720,7 @@ Directory layout
 ----
 
 Background: ZIP64 and Integer Overflow
-========================================
+======================================
 
 What is ZIP64?
 --------------
@@ -740,7 +740,7 @@ Parsers are supposed to check:
 *use the 64-bit value instead.*
 
 How the overflow attack works
-------------------------------
+-----------------------------
 
 A malicious archive author can craft a ZIP64 extra field containing a very
 large 64-bit size value — for example, ``0xFFFFFFFFFFFFFFFF`` (the maximum
@@ -768,7 +768,7 @@ number that still passes a 1 GiB check) rather than the true value of several
 hundred gigabytes.
 
 Why ``safezip`` catches this in the Guard phase
-------------------------------------------------
+-----------------------------------------------
 
 Before any decompression begins, the Guard reads every entry's ZIP64 extra
 field and applies two consistency rules:
@@ -791,7 +791,7 @@ are an additional layer that catches the most obviously crafted archives before
 a single byte is decompressed.
 
 Is this check opt-outable?
----------------------------
+--------------------------
 
 **No.** A ZIP64 extra field that is inconsistent with the central directory is
 not a valid ZIP file under any interpretation of the specification. It is
