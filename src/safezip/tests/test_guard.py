@@ -297,6 +297,16 @@ class TestZipInspector:
         assert result.is_bomb is True
         assert result.overlap_detail is not None
 
+    def test_overlap_at_offset_zero(self):
+        """Entries with data_start=0 should still be detected as overlapping."""
+        lfh1 = _lfh(b"a", b"data")
+        cdh1 = _cdh(b"a", b"data", 0)
+        cdh2 = _cdh(b"b", b"data", 0)
+        cd = cdh1 + cdh2
+        data = lfh1 + cd + _eocd(2, len(cd), len(lfh1))
+        result = self._scan(data)
+        assert result.is_bomb is True
+
     def test_invalid_not_a_zip(self):
         result = self._scan(b"this is not a zip file at all")
         assert result.is_bomb is None

@@ -337,6 +337,19 @@ def symlink_archive(tmp_path):
 
 
 @pytest.fixture()
+def setuid_archive(tmp_path):
+    """A ZIP with a regular file that has setuid bit (04755) in external_attr."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        info = zipfile.ZipInfo("suid_binary")
+        info.external_attr = (0o4755 & 0xFFFF) << 16
+        zf.writestr(info, b"ELF\x00")
+    p = tmp_path / "setuid.zip"
+    p.write_bytes(buf.getvalue())
+    return p
+
+
+@pytest.fixture()
 def data_descriptor_empty_archive(tmp_path):
     """Valid ZIP with empty member using data descriptor (compress_size=0)."""
     comp_data = b""

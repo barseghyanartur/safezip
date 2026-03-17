@@ -1,16 +1,21 @@
 """Phase A: pre-extraction static validation (the Guard)."""
 
+import logging
+import mmap
 import os
 import struct
 import zipfile
-from dataclasses import dataclass
-from typing import BinaryIO, Optional
+from dataclasses import dataclass as dc
+from dataclasses import field
+from typing import IO, BinaryIO, List, Optional, Tuple
 
 from ._exceptions import (
     FileCountExceededError,
     FileSizeExceededError,
     MalformedArchiveError,
 )
+
+log = logging.getLogger("safezip.security")
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
@@ -21,7 +26,7 @@ _ZIP64_EXTRA_TAG = 0x0001
 _ZIP64_SENTINEL = 0xFFFFFFFF
 
 
-@dataclass
+@dc
 class ScanResult:
     """Three-valued outcome of inspecting a zip file for overlapping records."""
 
@@ -40,6 +45,382 @@ class ScanResult:
     @classmethod
     def invalid(cls, reason: str) -> "ScanResult":
         return cls(is_bomb=None, invalid_reason=reason)
+
+
+# ---------------------------------------------------------------------------
+# Comprehensive Zip Bomb Detection (Fifield 2019)
+# ---------------------------------------------------------------------------
+
+ZIP64_EXTRA_ID = 0x0001
+COMPRESS_STORED = 0
+COMPRESS_DEFLATE = 8
+COMPRESS_BZIP2 = 12
+SENTINEL_32 = 0xFFFFFFFF
+SENTINEL_16 = 0xFFFF
+
+
+@dc
+class Config:
+    max_aggregate_ratio: float = 10000.0  # Very high; let Streamer handle ratio checks
+    max_total_uncompressed_bytes: int = 1 * 1024**3
+    max_file_count: int = 1_000_000  # Very high; Guard phase handles file count limits
+    max_deflate_ratio: float = 1_032.0
+    max_bzip2_ratio: float = 1_434_375.0
+
+
+@dc
+class FileEntry:
+    filename: str
+    header_offset: int
+    compressed_size: int
+    uncompressed_size: int
+    compress_type: int
+    cdh_extra_len: int = 0
+    lfh_extra_len: int = -1
+    data_start: int = 0
+    data_end: int = 0
+
+
+@dc
+class Issue:
+    kind: str
+    detail: str
+
+
+@dc
+class DetectionResult:
+    is_bomb: bool = False
+    issues: List[Issue] = field(default_factory=list)
+    compression_ratio: float = 0.0
+    total_uncompressed: int = 0
+    file_count: int = 0
+    zip_size: int = 0
+    zip64: bool = False
+
+
+def _find_eocd(mm: mmap.mmap, file_size: int) -> int:
+    sig = b"PK\x05\x06"
+    search_start = max(0, file_size - 65535 - 22)
+    mm.seek(search_start)
+    tail = mm.read(file_size - search_start)
+    pos = tail.rfind(sig)
+    return search_start + pos if pos != -1 else -1
+
+
+def _read_eocd(mm: mmap.mmap, file_size: int) -> Tuple[int, int, bool]:
+    eocd_pos = _find_eocd(mm, file_size)
+    if eocd_pos == -1:
+        raise ValueError("No End of Central Directory record found")
+
+    mm.seek(eocd_pos)
+    eocd = mm.read(22)
+    if len(eocd) < 22:
+        raise ValueError("Truncated EOCD")
+
+    cd_count_16 = struct.unpack_from("<H", eocd, 8)[0]
+    cd_offset_32 = struct.unpack_from("<I", eocd, 16)[0]
+
+    if eocd_pos >= 20:
+        mm.seek(eocd_pos - 20)
+        locator = mm.read(20)
+        if locator[:4] == b"PK\x06\x07":
+            zip64_eocd_offset = struct.unpack_from("<Q", locator, 8)[0]
+            mm.seek(zip64_eocd_offset)
+            eocd64 = mm.read(56)
+            if len(eocd64) >= 56 and eocd64[:4] == b"PK\x06\x06":
+                cd_count_64 = struct.unpack_from("<Q", eocd64, 32)[0]
+                cd_offset_64 = struct.unpack_from("<Q", eocd64, 48)[0]
+                return cd_offset_64, cd_count_64, True
+
+    return cd_offset_32, cd_count_16, False
+
+
+def _parse_zip64_extra(extra_bytes: bytes) -> dict:
+    result: dict = {}
+    i = 0
+    while i + 4 <= len(extra_bytes):
+        hdr_id = struct.unpack_from("<H", extra_bytes, i)[0]
+        data_len = struct.unpack_from("<H", extra_bytes, i + 2)[0]
+        i += 4
+        if hdr_id == ZIP64_EXTRA_ID:
+            j = i
+            if j + 8 <= i + data_len:
+                result["uncompressed_size"] = struct.unpack_from("<Q", extra_bytes, j)[
+                    0
+                ]
+                j += 8
+            if j + 8 <= i + data_len:
+                result["compressed_size"] = struct.unpack_from("<Q", extra_bytes, j)[0]
+                j += 8
+            if j + 8 <= i + data_len:
+                result["header_offset"] = struct.unpack_from("<Q", extra_bytes, j)[0]
+            break
+        i += data_len
+    return result
+
+
+def parse_central_directory(
+    mm: mmap.mmap, file_size: int
+) -> Tuple[List[FileEntry], bool]:
+    cd_offset, cd_count, is_zip64 = _read_eocd(mm, file_size)
+    entries: List[FileEntry] = []
+
+    mm.seek(cd_offset)
+    cdh_sig = b"PK\x01\x02"
+
+    for _ in range(cd_count):
+        header = mm.read(46)
+        if len(header) < 46:
+            raise ValueError(
+                f"Truncated central directory header: expected 46 bytes, "
+                f"got {len(header)}"
+            )
+        if header[:4] != cdh_sig:
+            raise ValueError(
+                f"Invalid central directory header signature: "
+                f"expected {cdh_sig!r}, got {header[:4]!r}"
+            )
+
+        compress_type = struct.unpack_from("<H", header, 10)[0]
+        compressed_size32 = struct.unpack_from("<I", header, 20)[0]
+        uncomp_size32 = struct.unpack_from("<I", header, 24)[0]
+        fname_len = struct.unpack_from("<H", header, 28)[0]
+        extra_len = struct.unpack_from("<H", header, 30)[0]
+        comment_len = struct.unpack_from("<H", header, 32)[0]
+        header_offset32 = struct.unpack_from("<I", header, 42)[0]
+
+        fname_bytes = mm.read(fname_len)
+        extra_bytes = mm.read(extra_len)
+        mm.seek(comment_len, 1)
+
+        filename = fname_bytes.decode("utf-8", errors="replace")
+
+        z64 = _parse_zip64_extra(extra_bytes)
+
+        compressed_size = z64.get("compressed_size", compressed_size32)
+        uncompressed_size = z64.get("uncompressed_size", uncomp_size32)
+        header_offset = z64.get("header_offset", header_offset32)
+
+        if compressed_size32 == SENTINEL_32 and "compressed_size" not in z64:
+            compressed_size = 0
+        if uncomp_size32 == SENTINEL_32 and "uncompressed_size" not in z64:
+            uncompressed_size = 0
+        if header_offset32 == SENTINEL_32 and "header_offset" not in z64:
+            header_offset = 0
+
+        entries.append(
+            FileEntry(
+                filename=filename,
+                header_offset=header_offset,
+                compressed_size=compressed_size,
+                uncompressed_size=uncompressed_size,
+                compress_type=compress_type,
+                cdh_extra_len=extra_len,
+            )
+        )
+
+    return entries, is_zip64
+
+
+LFH_FIXED = 30
+
+
+def resolve_data_intervals(mm: mmap.mmap, entries: List[FileEntry]) -> None:
+    lfh_sig = b"PK\x03\x04"
+    file_size = mm.size()
+
+    for e in entries:
+        if e.header_offset + LFH_FIXED > file_size:
+            e.data_start = e.header_offset
+            e.data_end = e.header_offset + e.compressed_size
+            continue
+
+        mm.seek(e.header_offset)
+        lfh = mm.read(LFH_FIXED)
+        if len(lfh) < LFH_FIXED or lfh[:4] != lfh_sig:
+            e.data_start = e.header_offset
+            e.data_end = e.header_offset + e.compressed_size
+            continue
+
+        lfh_fname_len = struct.unpack_from("<H", lfh, 26)[0]
+        lfh_extra_len = struct.unpack_from("<H", lfh, 28)[0]
+        e.lfh_extra_len = lfh_extra_len
+
+        e.data_start = e.header_offset + LFH_FIXED + lfh_fname_len + lfh_extra_len
+        e.data_end = e.data_start + e.compressed_size
+
+
+def check_overlapping_files(
+    entries: List[FileEntry],
+) -> List[Tuple[FileEntry, FileEntry]]:
+    if not entries:
+        return []
+
+    sorted_e = sorted(entries, key=lambda e: e.data_start)
+    overlaps: List[Tuple[FileEntry, FileEntry]] = []
+    max_end = sorted_e[0].data_end
+    max_end_entry = sorted_e[0]
+
+    for e in sorted_e[1:]:
+        if e.data_start < max_end:
+            overlaps.append((max_end_entry, e))
+        if e.data_end > max_end:
+            max_end = e.data_end
+            max_end_entry = e
+
+    return overlaps
+
+
+def check_extra_field_quoting(entries: List[FileEntry]) -> List[FileEntry]:
+    if not entries:
+        return []
+
+    sorted_e = sorted(entries, key=lambda e: e.header_offset)
+    suspicious: List[FileEntry] = []
+
+    for i, e in enumerate(sorted_e[:-1]):
+        next_e = sorted_e[i + 1]
+        eff_extra = e.lfh_extra_len if e.lfh_extra_len >= 0 else e.cdh_extra_len
+        if eff_extra > 0 and e.data_start >= next_e.header_offset:
+            suspicious.append(e)
+
+    return suspicious
+
+
+def check_compression_ratios(
+    entries: List[FileEntry], cfg: Config
+) -> List[Tuple[FileEntry, float]]:
+    suspicious = []
+    for e in entries:
+        if e.compressed_size <= 0:
+            continue
+        ratio = e.uncompressed_size / e.compressed_size
+        limit = (
+            cfg.max_bzip2_ratio
+            if e.compress_type == COMPRESS_BZIP2
+            else cfg.max_deflate_ratio
+        )
+        if ratio > limit:
+            suspicious.append((e, ratio))
+    return suspicious
+
+
+def detect_zip_bomb(path: str, cfg: Optional[Config] = None) -> DetectionResult:
+    if cfg is None:
+        cfg = Config()
+
+    zip_size = os.path.getsize(path)
+    result = DetectionResult(is_bomb=False, zip_size=zip_size)
+
+    with open(path, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+        try:
+            entries, is_zip64 = parse_central_directory(mm, zip_size)
+        except (ValueError, struct.error) as exc:
+            result.issues.append(
+                Issue("parse_error", f"Could not parse central directory: {exc}")
+            )
+            result.is_bomb = True
+            return result
+
+        result.zip64 = is_zip64
+        result.file_count = len(entries)
+
+        try:
+            resolve_data_intervals(mm, entries)
+        except Exception:
+            for e in entries:
+                if e.data_start == 0:
+                    e.data_start = e.header_offset
+                    e.data_end = e.header_offset + e.compressed_size
+
+    overlaps = check_overlapping_files(entries)
+    if overlaps:
+        has_full = any(a.header_offset == b.header_offset for a, b in overlaps)
+        kind = "full_overlap" if has_full else "quoted_overlap"
+        sample = [(a.filename, b.filename) for a, b in overlaps[:3]]
+        result.issues.append(
+            Issue(
+                kind,
+                f"Overlapping file data detected ({len(overlaps)} pair(s)). "
+                f"Sample: {sample}. "
+                f"Matches Fifield "
+                f"{'full-overlap' if has_full else 'quoted_overlap (or giant-steps)'} "
+                f"construction.",
+            )
+        )
+        result.is_bomb = True
+
+    extra_q = check_extra_field_quoting(entries)
+    if extra_q:
+        names = [e.filename for e in extra_q[:3]]
+        result.issues.append(
+            Issue(
+                "extra_field_quoting",
+                f"Extra-field quoting detected in {len(extra_q)} file(s): {names}. "
+                "LFH extra fields enclose subsequent local file headers.",
+            )
+        )
+        result.is_bomb = True
+
+    total_uncompressed = sum(e.uncompressed_size for e in entries)
+    result.total_uncompressed = total_uncompressed
+    overall_ratio = total_uncompressed / zip_size if zip_size > 0 else 0.0
+    result.compression_ratio = overall_ratio
+
+    if overall_ratio > cfg.max_aggregate_ratio:
+        result.issues.append(
+            Issue(
+                "aggregate_ratio",
+                f"Extreme aggregate compression ratio: {overall_ratio:,.0f}:1 "
+                f"({total_uncompressed / 1e9:.2f} GiB uncompressed from "
+                f"{zip_size / 1e6:.2f} MiB zip)",
+            )
+        )
+        result.is_bomb = True
+
+    if total_uncompressed > cfg.max_total_uncompressed_bytes:
+        result.issues.append(
+            Issue(
+                "total_size",
+                f"Total uncompressed size {total_uncompressed / 1e9:.2f} GiB "
+                f"exceeds limit of {cfg.max_total_uncompressed_bytes / 1e9:.2f} GiB",
+            )
+        )
+        result.is_bomb = True
+
+    bad_ratios = check_compression_ratios(entries, cfg)
+    if bad_ratios:
+        worst_entry, worst_ratio = max(bad_ratios, key=lambda x: x[1])
+        cname = {
+            COMPRESS_STORED: "stored",
+            COMPRESS_DEFLATE: "DEFLATE",
+            COMPRESS_BZIP2: "bzip2",
+        }.get(worst_entry.compress_type, str(worst_entry.compress_type))
+        limit = (
+            cfg.max_bzip2_ratio
+            if worst_entry.compress_type == COMPRESS_BZIP2
+            else cfg.max_deflate_ratio
+        )
+        result.issues.append(
+            Issue(
+                "per_file_ratio",
+                f"File '{worst_entry.filename}' ({cname}) ratio {worst_ratio:,.0f}:1 "
+                f"exceeds the {cname} theoretical maximum of {limit:,.0f}:1",
+            )
+        )
+        result.is_bomb = True
+
+    if result.file_count > cfg.max_file_count:
+        result.issues.append(
+            Issue(
+                "file_count",
+                f"Suspiciously high file count: {result.file_count:,} "
+                f"(threshold {cfg.max_file_count:,})",
+            )
+        )
+        result.is_bomb = True
+
+    return result
 
 
 class ZipInspector:
@@ -439,48 +820,37 @@ class ZipInspector:
         return ScanResult.clean()
 
 
-def _check_overlapping_entries(fileobj: BinaryIO) -> None:
-    """Detect Fifield-style zip bombs using ZipInspector.
+def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
+    """Detect Fifield-style zip bombs using comprehensive detection.
+
+    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
+    entries, extra-field quoting, and other Fifield 2019 attack vectors.
+
+    Note: The detection requires a filesystem-backed path (fileobj.name). For
+    in-memory BinaryIO objects without a ``name`` attribute, the check is skipped
+    and a warning is logged. Users extracting untrusted archives from memory should
+    consider writing to a temporary file first.
 
     :param fileobj: A seekable binary file object.
     :raises MalformedArchiveError: If overlapping entries are detected.
     """
-    result = ZipInspector(fileobj).scan()
-    if result.is_bomb is True:
-        raise MalformedArchiveError(
-            "Archive contains overlapping local entries — "
-            "likely a Fifield-style zip bomb. Extraction refused."
+    path = getattr(fileobj, "name", None)
+    if path is None:
+        log.warning(
+            "Skipping Fifield-style zip bomb detection for in-memory archive "
+            "(no filesystem path). This is a security limitation for "
+            "BinaryIO objects without a 'name' attribute."
         )
-
-
-def _parse_zip64_extra(extra_bytes: bytes) -> dict:
-    """Parse the ZIP64 extended information extra field (tag 0x0001).
-
-    Returns a dict with any of the keys:
-      'uncompressed_size', 'compressed_size', 'local_header_offset'
-    """
-    result: dict = {}
-    offset = 0
-    while offset + 4 <= len(extra_bytes):
-        try:
-            tag, size = struct.unpack_from("<HH", extra_bytes, offset)
-        except struct.error:
-            break
-        offset += 4
-        if tag == _ZIP64_EXTRA_TAG:
-            data = extra_bytes[offset : offset + size]
-            pos = 0
-            if len(data) >= 8:
-                result["uncompressed_size"] = struct.unpack_from("<Q", data, pos)[0]
-                pos += 8
-            if len(data) >= pos + 8:
-                result["compressed_size"] = struct.unpack_from("<Q", data, pos)[0]
-                pos += 8
-            if len(data) >= pos + 8:
-                result["local_header_offset"] = struct.unpack_from("<Q", data, pos)[0]
-            break
-        offset += size
-    return result
+        return
+    try:
+        result = detect_zip_bomb(path)
+    except Exception as exc:
+        raise MalformedArchiveError(
+            f"Failed to parse archive for overlap detection: {exc}"
+        ) from exc
+    if result.is_bomb:
+        details = "; ".join(i.detail for i in result.issues[:2])
+        raise MalformedArchiveError(f"overlapping entries detected: {details}")
 
 
 def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
@@ -499,8 +869,7 @@ def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
        huge size in the ZIP64 block; Python uses the small 32-bit value, but
        we see the discrepancy and reject the archive.
     """
-    # Check 1: 32-bit sentinel present but no ZIP64 extra field
-    if info.file_size == _ZIP64_SENTINEL or info.compress_size == _ZIP64_SENTINEL:
+    if info.file_size == SENTINEL_32 or info.compress_size == SENTINEL_32:
         zip64 = _parse_zip64_extra(info.extra) if info.extra else {}
         if not zip64:
             raise MalformedArchiveError(
@@ -508,11 +877,6 @@ def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
                 f"in the 32-bit size field but no ZIP64 extra field is present. "
                 f"Archive is malformed."
             )
-        # A ZIP64 block is present.  Python's zipfile should have already
-        # replaced info.file_size / info.compress_size with the resolved
-        # 64-bit values, so the sentinel should no longer appear in those
-        # fields when we reach Check 2.  Running Check 2 here would produce
-        # a false positive (ZIP64 value ≠ sentinel), so we stop.
         return
 
     if not info.extra:
@@ -521,7 +885,6 @@ def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
     if not zip64:
         return
 
-    # Check 2: ZIP64 extra field present but values disagree with resolved sizes
     if "uncompressed_size" in zip64 and zip64["uncompressed_size"] != info.file_size:
         raise MalformedArchiveError(
             f"ZIP64 inconsistency in entry {info.filename!r}: "

@@ -1,6 +1,7 @@
 """End-to-end integration tests using real crafted malicious archives."""
 
 import io
+import stat
 import zipfile
 
 import pytest
@@ -122,6 +123,22 @@ class TestExplicitPathRequirement:
             pytest.raises((TypeError, AttributeError)),
         ):
             zf.extractall(None)
+
+    def test_extract_with_none_path_raises(self, legitimate_archive):
+        """Passing None as path to extract() raises TypeError."""
+        with SafeZipFile(legitimate_archive) as zf, pytest.raises(TypeError):
+            zf.extract("hello.txt", None)
+
+    def test_extractall_with_members_list(self, legitimate_archive, tmp_path):
+        """extractall with a members list extracts only those members."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(legitimate_archive) as zf:
+            zf.extractall(dest, members=["hello.txt"])
+        # Only hello.txt should exist
+        assert (dest / "hello.txt").exists()
+        contents = list(dest.rglob("*"))
+        assert len(contents) == 1
 
 
 class TestMalformedArchive:
@@ -320,6 +337,18 @@ class TestNestingDepthLimit:
         # depth=2 > env-var limit of 1 → should raise
         with pytest.raises(NestingDepthError):
             SafeZipFile(legitimate_archive, _nesting_depth=2)
+
+    def test_nesting_depth_exceeded_event(self, legitimate_archive):
+        """nesting_depth_exceeded event is emitted when depth exceeds limit."""
+        events = []
+        with pytest.raises(NestingDepthError):
+            SafeZipFile(
+                legitimate_archive,
+                max_nesting_depth=1,
+                _nesting_depth=2,
+                on_security_event=events.append,
+            )
+        assert any(e.event_type == "nesting_depth_exceeded" for e in events)
 
 
 class TestNestedArchiveGuard:
@@ -554,6 +583,62 @@ class TestBuiltinRecursiveExtraction:
         assert (dest / "pkg" / "data.txt").read_bytes() == b"nested data"
         assert not (dest / "pkg.zip").exists()
 
+    def test_recursive_content_detection_bypasses_extension(self, tmp_path):
+        """A nested ZIP named with a non-ZIP extension is still recursed into
+        when recursive=True (content-based detection)."""
+        inner = self._build_zip([("secret.txt", b"inner content")])
+        outer_buf = io.BytesIO()
+        with zipfile.ZipFile(outer_buf, "w") as zf:
+            zf.writestr("data.csv", inner)
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(outer_buf.getvalue())
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        # .csv is not a known archive extension, so directory name stays as-is
+        assert (dest / "data.csv" / "secret.txt").read_bytes() == b"inner content"
+
+    def test_recursive_non_zip_with_zip_extension_not_recursed(self, tmp_path):
+        """A file named .zip that is not actually a ZIP is extracted as a plain file."""
+        outer_buf = io.BytesIO()
+        with zipfile.ZipFile(outer_buf, "w") as zf:
+            zf.writestr("fake.zip", b"this is not a zip file at all")
+        outer_p = tmp_path / "outer.zip"
+        outer_p.write_bytes(outer_buf.getvalue())
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(outer_p, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "fake.zip").read_bytes() == b"this is not a zip file at all"
+
+
+class TestPermissionSanitisation:
+    """Dangerous Unix permission bits are stripped from extracted files."""
+
+    def test_setuid_stripped_by_default(self, setuid_archive, tmp_path):
+        """setuid bit is stripped by default."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(setuid_archive) as zf:
+            zf.extractall(dest)
+        mode = (dest / "suid_binary").stat().st_mode
+        assert not (mode & stat.S_ISUID), "setuid bit must be stripped by default"
+
+    def test_normal_permissions_unaffected(self, legitimate_archive, tmp_path):
+        """Stripping special bits does not affect normal file access."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+        with SafeZipFile(legitimate_archive) as zf:
+            zf.extractall(dest)
+        for f in dest.rglob("*"):
+            if f.is_file():
+                assert f.stat().st_mode & stat.S_IRUSR
+
 
 class TestSymlinkPolicy:
     """SafeZipFile enforces the configured SymlinkPolicy for ZIP symlink entries.
@@ -676,3 +761,14 @@ class TestCompressSizeZero:
         # No partial files left.
         remaining = [f for f in dest.rglob("*") if not f.is_dir()]
         assert not remaining
+
+
+class TestEnvVarHandling:
+    """Environment variable parsing edge cases."""
+
+    def test_invalid_symlink_policy_env(self, legitimate_archive, monkeypatch, caplog):
+        """Invalid symlink policy is logged and defaults to REJECT."""
+        monkeypatch.setenv("SAFEZIP_SYMLINK_POLICY", "invalid_policy")
+        with SafeZipFile(legitimate_archive, symlink_policy=None) as zf:
+            assert zf._symlink_policy == SymlinkPolicy.REJECT
+        assert "Ignoring unrecognised" in caplog.text
