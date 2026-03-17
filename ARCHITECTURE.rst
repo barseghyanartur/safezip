@@ -112,6 +112,13 @@ Partially trusted in the Guard
   options are exposed for this check — it is always enabled when the archive
   is opened.
 
+  .. note::
+
+     The overlap detection requires a filesystem-backed path (the file must have
+     a ``name`` attribute). For in-memory ``BinaryIO`` objects without a path,
+     the check is skipped and a warning is logged. Users extracting untrusted
+     archives from memory should write to a temporary file first.
+
 Phase B — The Sandbox (Path Manager)
 ------------------------------------
 

@@ -1,5 +1,6 @@
 """Phase A: pre-extraction static validation (the Guard)."""
 
+import logging
 import mmap
 import os
 import struct
@@ -13,6 +14,8 @@ from ._exceptions import (
     FileSizeExceededError,
     MalformedArchiveError,
 )
+
+log = logging.getLogger("safezip.security")
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
@@ -812,11 +815,24 @@ class ZipInspector:
 def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
     """Detect Fifield-style zip bombs using comprehensive detection.
 
+    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
+    entries, extra-field quoting, and other Fifield 2019 attack vectors.
+
+    Note: The detection requires a filesystem-backed path (fileobj.name). For
+    in-memory BinaryIO objects without a ``name`` attribute, the check is skipped
+    and a warning is logged. Users extracting untrusted archives from memory should
+    consider writing to a temporary file first.
+
     :param fileobj: A seekable binary file object.
     :raises MalformedArchiveError: If overlapping entries are detected.
     """
     path = getattr(fileobj, "name", None)
     if path is None:
+        log.warning(
+            "Skipping Fifield-style zip bomb detection for in-memory archive "
+            "(no filesystem path). This is a security limitation for "
+            "BinaryIO objects without a 'name' attribute."
+        )
         return
     result = detect_zip_bomb(path)
     if result.is_bomb:
