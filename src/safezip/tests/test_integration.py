@@ -124,7 +124,7 @@ class TestExplicitPathRequirement:
         ):
             zf.extractall(None)
 
-    def test_extract_with_none_path_raises(self, legitimate_archive, tmp_path):
+    def test_extract_with_none_path_raises(self, legitimate_archive):
         """Passing None as path to extract() raises TypeError."""
         with SafeZipFile(legitimate_archive) as zf, pytest.raises(TypeError):
             zf.extract("hello.txt", None)
