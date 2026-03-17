@@ -1,6 +1,6 @@
-====================================================
+============================================
 safezip — Hardened ZIP Extraction for Python
-====================================================
+============================================
 
 :Author: Artur Barseghyan
 :Status: Active
@@ -92,7 +92,7 @@ Checks
     ``MalformedArchiveError`` before the Guard runs.
 
 Partially trusted in the Guard
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **Reported file sizes**: used for early rejection (if a declared size already
   exceeds ``max_file_size``, the archive is rejected before decompression).
@@ -100,11 +100,16 @@ Partially trusted in the Guard
 - **Compression ratios reported in headers**: not used.  Ratio checks in the
   Streamer use the header-reported *compressed* size as the denominator but
   the actual *decompressed* byte count as the numerator.
-- **Overlap detection based on offsets**: out of scope (ambiguous for
-  legitimate multi-volume archives; defer to streaming behaviour).
+- **Overlap detection based on offsets**: implemented. The Guard parses the
+  central directory and each entry's local header to compute the byte span
+  occupied by every entry. If any two spans overlap, the archive is rejected
+  as a likely Fifield-style zip bomb before any decompression begins. This
+  check uses the ``ZipInspector`` class in ``_guard.py``. Detection emits the
+  ``malformed_archive`` security event. No configuration options are exposed
+  for this check — it is always enabled when the archive is opened.
 
 Phase B — The Sandbox (Path Manager)
---------------------------------------
+------------------------------------
 
 Role
 ~~~~

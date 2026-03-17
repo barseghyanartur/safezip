@@ -439,7 +439,7 @@ class ZipInspector:
         return ScanResult.clean()
 
 
-def _check_overlapping_entries(fileobj) -> None:
+def _check_overlapping_entries(fileobj: BinaryIO) -> None:
     """Detect Fifield-style zip bombs using ZipInspector.
 
     :param fileobj: A seekable binary file object.

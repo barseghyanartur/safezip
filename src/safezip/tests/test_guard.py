@@ -343,3 +343,202 @@ class TestZipInspector:
         cd = cdh
         raw = prefix + lfh + cd + _eocd(1, len(cd), len(prefix) + len(lfh))
         assert self._scan(raw).is_bomb is False
+
+    def test_zip_with_comment(self):
+        raw = _build_zip((b"x.txt", b"data"))
+        eocd_pos = raw.rfind(b"PK\x05\x06")
+        comment = b"this is a zip comment"
+        head = raw[:eocd_pos]
+        eocd = raw[eocd_pos:]
+        new_eocd = eocd[:20] + struct.pack("<H", len(comment)) + comment
+        assert self._scan(head + new_eocd).is_bomb is False
+
+    def test_invalid_split_across_disks(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            1,
+            1,
+            1,
+            len(cd),
+            0,
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_eocd_entries_mismatch(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            0,
+            1,
+            2,
+            len(cd),
+            len(lfh),
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_eocd_cd_extends_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        eocd = struct.pack(
+            "<LHHHHLLH",
+            0x06054B50,
+            0,
+            0,
+            1,
+            1,
+            len(cd) + 1000,
+            len(lfh),
+            0,
+        )
+        raw = lfh + cd + eocd
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cd_extends_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        raw = lfh + cd + cd + _eocd(2, len(cd) * 2, len(lfh))
+        result = self._scan(raw)
+        assert result.is_bomb is not False
+
+    def test_invalid_local_offset_past_eof(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_bad = _cdh(b"a", b"data", 999999)
+        cd = cdh_bad
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cdh_variable_field_truncated(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            4,
+            4,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        cdh = cdh_base + b"a"
+        raw = lfh + cdh + _eocd(1, len(cdh), len(lfh))
+        assert self._scan(raw).is_bomb is not True
+
+    def test_invalid_lfh_signature_invalid(self):
+        lfh = _lfh(b"a", b"data")
+        raw_lfh = bytearray(lfh)
+        raw_lfh[0] = 0xFF
+        cdh = _cdh(b"a", b"data", 0)
+        cd = cdh
+        raw = bytes(raw_lfh) + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_invalid_cdh_disk_nonzero(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = (
+            struct.pack(
+                "<LHHHHHHLLLHHHHHLL",
+                0x02014B50,
+                20,
+                20,
+                0,
+                0,
+                0,
+                0,
+                zlib.crc32(b"data") & 0xFFFFFFFF,
+                4,
+                4,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
+            + b"a"
+        )
+        cdh = cdh_base
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is not True
+
+    def test_cdh_extra_field_truncated(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            4,
+            4,
+            5,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        extra = struct.pack("<HH", 0x0001, 4)
+        cdh = cdh_base + b"filename" + extra
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
+
+    def test_cdh_zip64_extra_invalid_size(self):
+        lfh = _lfh(b"a", b"data")
+        cdh_base = struct.pack(
+            "<LHHHHHHLLLHHHHHLL",
+            0x02014B50,
+            20,
+            20,
+            0,
+            0,
+            0,
+            0,
+            zlib.crc32(b"data") & 0xFFFFFFFF,
+            0xFFFFFFFF,
+            0xFFFFFFFF,
+            10,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0xFFFFFFFF,
+        )
+        extra = struct.pack("<HHQ", 0x0001, 4, 100)
+        cdh = cdh_base + b"filename" + extra
+        cd = cdh
+        raw = lfh + cd + _eocd(1, len(cd), len(lfh))
+        assert self._scan(raw).is_bomb is None
