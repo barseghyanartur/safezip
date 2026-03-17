@@ -262,7 +262,7 @@ def check_overlapping_files(
     max_end_entry = sorted_e[0]
 
     for e in sorted_e[1:]:
-        if e.data_start < max_end and e.data_start != 0:
+        if e.data_start < max_end:
             overlaps.append((max_end_entry, e))
         if e.data_end > max_end:
             max_end = e.data_end
