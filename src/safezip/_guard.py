@@ -4,7 +4,9 @@ import logging
 import mmap
 import os
 import struct
+import tempfile
 import zipfile
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import IO, BinaryIO, List, Optional, Tuple
 
@@ -821,31 +823,8 @@ class ZipInspector:
         return ScanResult.clean()
 
 
-def _check_overlapping_entries(
-    fileobj: IO[bytes], cfg: Optional[Config] = None
-) -> None:
-    """Detect Fifield-style zip bombs using comprehensive detection.
-
-    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
-    entries, extra-field quoting, and other Fifield 2019 attack vectors.
-
-    Note: The detection requires a filesystem-backed path (fileobj.name). For
-    in-memory BinaryIO objects without a ``name`` attribute, the check is skipped
-    and a warning is logged. Users extracting untrusted archives from memory should
-    consider writing to a temporary file first.
-
-    :param fileobj: A seekable binary file object.
-    :param cfg: Optional Config with limits. If not provided, uses defaults.
-    :raises MalformedArchiveError: If overlapping entries are detected.
-    """
-    path = getattr(fileobj, "name", None)
-    if path is None:
-        log.warning(
-            "Skipping Fifield-style zip bomb detection for in-memory archive "
-            "(no filesystem path). This is a security limitation for "
-            "BinaryIO objects without a 'name' attribute."
-        )
-        return
+def _run_overlap_detection(path: str, cfg: Optional[Config]) -> None:
+    """Run detect_zip_bomb against a filesystem path and raise on positive."""
     try:
         result = detect_zip_bomb(path, cfg)
     except Exception as exc:
@@ -855,6 +834,60 @@ def _check_overlapping_entries(
     if result.is_bomb:
         details = "; ".join(i.detail for i in result.issues[:2])
         raise MalformedArchiveError(f"overlapping entries detected: {details}")
+
+
+def _check_overlapping_entries(
+    fileobj: IO[bytes], cfg: Optional[Config] = None
+) -> None:
+    """Detect Fifield-style zip bombs using comprehensive detection.
+
+    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
+    entries, extra-field quoting, and other Fifield 2019 attack vectors.
+
+    For in-memory BinaryIO objects without a filesystem path, the archive is
+    spilled to a temporary file to enable mmap-based detection.
+
+    :param fileobj: A seekable binary file object.
+    :param cfg: Optional Config with limits. If not provided, uses defaults.
+    :raises MalformedArchiveError: If overlapping entries are detected.
+    """
+    path = getattr(fileobj, "name", None)
+
+    if path is not None:
+        _run_overlap_detection(path, cfg)
+        return
+
+    # BinaryIO input: spill to a temporary file so mmap-based detection
+    # can run. Save and restore position so the caller's zipfile.ZipFile
+    # instance is not disturbed.
+    try:
+        pos = fileobj.tell()
+    except OSError:
+        pos = None
+    try:
+        try:
+            fileobj.seek(0)
+        except OSError:
+            log.warning(
+                "Skipping Fifield-style zip bomb detection: "
+                "in-memory archive is not seekable."
+            )
+            return
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(fileobj.read())
+            _run_overlap_detection(tmp_path, cfg)
+        finally:
+            if tmp_path is not None:
+                with suppress(OSError):
+                    os.unlink(tmp_path)
+    finally:
+        if pos is not None:
+            with suppress(OSError):
+                fileobj.seek(pos)
 
 
 def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:

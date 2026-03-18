@@ -180,6 +180,29 @@ class TestFifieldBomb:
             SafeZipFile(fifield_bomb_archive, on_security_event=events.append)
         assert any(e.event_type == "malformed_archive" for e in events)
 
+    def test_fifield_bomb_as_bytesio_rejected(self, fifield_bomb_archive):
+        """Fifield bomb as BytesIO is rejected."""
+        data = fifield_bomb_archive.read_bytes()
+        bio = io.BytesIO(data)
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(bio)
+
+    def test_legitimate_archive_as_bytesio_passes(self, legitimate_archive):
+        """Legitimate archive as BytesIO passes."""
+        data = legitimate_archive.read_bytes()
+        bio = io.BytesIO(data)
+        with SafeZipFile(bio) as zf:
+            assert len(zf.namelist()) > 0
+
+    def test_fifield_bomb_bytesio_event_fires(self, fifield_bomb_archive):
+        """on_security_event fires for in-memory Fifield bomb."""
+        events = []
+        data = fifield_bomb_archive.read_bytes()
+        bio = io.BytesIO(data)
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(bio, on_security_event=events.append)
+        assert any(e.event_type == "malformed_archive" for e in events)
+
 
 class TestSecurityEventCoverage:
     """on_security_event callback fires for all security violation types."""
