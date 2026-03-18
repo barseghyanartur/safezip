@@ -258,7 +258,9 @@ When asked to add a feature or fix a bug, follow these steps in order:
    - Integration test in `test_integration.py` verifying no partial files remain.
    - Legitimate-input test confirming the happy path still works.
 9. **Update `README.rst`** if the API or default limits table changed.
-10. **Suggest running:** `make docker-test`.
+10. **Suggest running:** Either single environement
+    test `make test-env ENV=py312` or test all envionments `make test`.
+11. **Suggest running:** `make pre-commit`.
 
 ### Acceptable new features
 
@@ -335,6 +337,12 @@ assert not remaining
 ---
 
 ## 8. Coding Conventions
+
+Run all linting checks:
+
+```sh
+make pre-commit
+```
 
 ### Formatting
 

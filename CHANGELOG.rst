@@ -19,6 +19,24 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.1.6
+-----
+2026-03-17
+
+- **Comprehensive zip bomb detection**: Replaced `ZipInspector` with full
+  Fifield 2019 detection (overlap, extra-field quoting, per-file/aggregate
+  ratio, Zip64, bzip2). Configurable thresholds.
+- **Content-based nested archive detection**: Uses `zipfile.is_zipfile()`
+  instead of extension-only checks; prevents extension-spoofing attacks.
+- **Permission sanitisation**: New `strip_special_bits` option strips
+  setuid/setgid/sticky bits from extracted files (default: True).
+- **Module-level env-var caching**: Default limits cached at import time for
+  performance, with runtime env-var overrides still supported.
+- **Event improvements**: Added `nesting_depth_exceeded` event type.
+- **Type safety**: Added explicit `TypeError` for `None` path in `extract()`.
+- **Documentation**: Updated ARCHITECTURE.rst with new features.
+
+
 0.1.5
 -----
 2026-03-17
