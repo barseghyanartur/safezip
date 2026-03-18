@@ -271,7 +271,9 @@ class SafeZipFile:
 
         # Run the Guard immediately on open
         try:
-            validate_archive(self._zf, self._max_files, self._max_file_size)
+            validate_archive(
+                self._zf, self._max_files, self._max_file_size, self._max_total_size
+            )
         except FileCountExceededError:
             self._emit_event("file_count_exceeded")
             raise
@@ -462,17 +464,51 @@ class SafeZipFile:
                 f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
             )
             try:
-                stream_extract_member(
-                    self._zf,
-                    info,
-                    tmp,
-                    max_file_size=self._max_file_size,
-                    max_per_member_ratio=self._max_per_member_ratio,
-                    max_total_size=self._max_total_size,
-                    max_total_ratio=self._max_total_ratio,
-                    counters=counters,
-                    pwd=pwd,
-                )
+                try:
+                    stream_extract_member(
+                        self._zf,
+                        info,
+                        tmp,
+                        max_file_size=self._max_file_size,
+                        max_per_member_ratio=self._max_per_member_ratio,
+                        max_total_size=self._max_total_size,
+                        max_total_ratio=self._max_total_ratio,
+                        counters=counters,
+                        pwd=pwd,
+                    )
+                except FileSizeExceededError:
+                    self._emit_event("file_size_exceeded")
+                    log.warning(
+                        "Member size limit exceeded during streaming",
+                        extra={
+                            "event": "file_size_exceeded",
+                            "member": info.filename[:256],
+                            "archive_hash": self._archive_hash,
+                        },
+                    )
+                    raise
+                except TotalSizeExceededError:
+                    self._emit_event("total_size_exceeded")
+                    log.warning(
+                        "Cumulative extraction size limit exceeded during streaming",
+                        extra={
+                            "event": "total_size_exceeded",
+                            "member": info.filename[:256],
+                            "archive_hash": self._archive_hash,
+                        },
+                    )
+                    raise
+                except CompressionRatioError:
+                    self._emit_event("compression_ratio_exceeded")
+                    log.warning(
+                        "Compression ratio limit exceeded during streaming",
+                        extra={
+                            "event": "compression_ratio_exceeded",
+                            "member": info.filename[:256],
+                            "archive_hash": self._archive_hash,
+                        },
+                    )
+                    raise
                 # Content-based detection (avoids extension-spoofing)
                 if zipfile.is_zipfile(tmp):
                     nested_dest = dest.parent / _archive_stem(dest.name)

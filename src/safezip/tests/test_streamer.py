@@ -8,8 +8,8 @@ import pytest
 from safezip import (
     CompressionRatioError,
     FileSizeExceededError,
+    MalformedArchiveError,
     SafeZipFile,
-    TotalSizeExceededError,
 )
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
@@ -73,6 +73,7 @@ class TestTotalSizeLimit:
     """Streamer enforces cumulative total size across all members."""
 
     def test_total_size_exceeded(self, tmp_path):
+        """Total size limit enforced during Guard phase when limits are threaded."""
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
             for i in range(5):
@@ -82,11 +83,8 @@ class TestTotalSizeLimit:
         dest = tmp_path / "out"
         dest.mkdir()
 
-        with (
-            pytest.raises((TotalSizeExceededError, FileSizeExceededError)),
-            SafeZipFile(p, max_file_size=1000, max_total_size=1000) as zf,
-        ):
-            zf.extractall(dest)
+        with pytest.raises(MalformedArchiveError):
+            SafeZipFile(p, max_file_size=1000, max_total_size=1000)
 
 
 class TestCompressionRatioLimit:

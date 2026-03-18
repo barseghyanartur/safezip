@@ -4,9 +4,10 @@ import logging
 import mmap
 import os
 import struct
+import tempfile
 import zipfile
-from dataclasses import dataclass as dc
-from dataclasses import field
+from contextlib import suppress
+from dataclasses import dataclass, field
 from typing import IO, BinaryIO, List, Optional, Tuple
 
 from ._exceptions import (
@@ -26,7 +27,7 @@ _ZIP64_EXTRA_TAG = 0x0001
 _ZIP64_SENTINEL = 0xFFFFFFFF
 
 
-@dc
+@dataclass
 class ScanResult:
     """Three-valued outcome of inspecting a zip file for overlapping records."""
 
@@ -59,16 +60,18 @@ SENTINEL_32 = 0xFFFFFFFF
 SENTINEL_16 = 0xFFFF
 
 
-@dc
+@dataclass
 class Config:
     max_aggregate_ratio: float = 10000.0  # Very high; let Streamer handle ratio checks
-    max_total_uncompressed_bytes: int = 1 * 1024**3
-    max_file_count: int = 1_000_000  # Very high; Guard phase handles file count limits
+    max_total_uncompressed_bytes: int = (
+        10 * 1024**3
+    )  # 10 GiB; above SafeZipFile default
+    max_file_count: int = 100_000  # Above SafeZipFile default of 10_000
     max_deflate_ratio: float = 1_032.0
     max_bzip2_ratio: float = 1_434_375.0
 
 
-@dc
+@dataclass
 class FileEntry:
     filename: str
     header_offset: int
@@ -81,13 +84,13 @@ class FileEntry:
     data_end: int = 0
 
 
-@dc
+@dataclass
 class Issue:
     kind: str
     detail: str
 
 
-@dc
+@dataclass
 class DetectionResult:
     is_bomb: bool = False
     issues: List[Issue] = field(default_factory=list)
@@ -820,30 +823,10 @@ class ZipInspector:
         return ScanResult.clean()
 
 
-def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
-    """Detect Fifield-style zip bombs using comprehensive detection.
-
-    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
-    entries, extra-field quoting, and other Fifield 2019 attack vectors.
-
-    Note: The detection requires a filesystem-backed path (fileobj.name). For
-    in-memory BinaryIO objects without a ``name`` attribute, the check is skipped
-    and a warning is logged. Users extracting untrusted archives from memory should
-    consider writing to a temporary file first.
-
-    :param fileobj: A seekable binary file object.
-    :raises MalformedArchiveError: If overlapping entries are detected.
-    """
-    path = getattr(fileobj, "name", None)
-    if path is None:
-        log.warning(
-            "Skipping Fifield-style zip bomb detection for in-memory archive "
-            "(no filesystem path). This is a security limitation for "
-            "BinaryIO objects without a 'name' attribute."
-        )
-        return
+def _run_overlap_detection(path: str, cfg: Optional[Config]) -> None:
+    """Run detect_zip_bomb against a filesystem path and raise on positive."""
     try:
-        result = detect_zip_bomb(path)
+        result = detect_zip_bomb(path, cfg)
     except Exception as exc:
         raise MalformedArchiveError(
             f"Failed to parse archive for overlap detection: {exc}"
@@ -851,6 +834,60 @@ def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
     if result.is_bomb:
         details = "; ".join(i.detail for i in result.issues[:2])
         raise MalformedArchiveError(f"overlapping entries detected: {details}")
+
+
+def _check_overlapping_entries(
+    fileobj: IO[bytes], cfg: Optional[Config] = None
+) -> None:
+    """Detect Fifield-style zip bombs using comprehensive detection.
+
+    This function uses `detect_zip_bomb()` to analyse the archive for overlapping
+    entries, extra-field quoting, and other Fifield 2019 attack vectors.
+
+    For in-memory BinaryIO objects without a filesystem path, the archive is
+    spilled to a temporary file to enable mmap-based detection.
+
+    :param fileobj: A seekable binary file object.
+    :param cfg: Optional Config with limits. If not provided, uses defaults.
+    :raises MalformedArchiveError: If overlapping entries are detected.
+    """
+    path = getattr(fileobj, "name", None)
+
+    if path is not None:
+        _run_overlap_detection(path, cfg)
+        return
+
+    # BinaryIO input: spill to a temporary file so mmap-based detection
+    # can run. Save and restore position so the caller's zipfile.ZipFile
+    # instance is not disturbed.
+    try:
+        pos = fileobj.tell()
+    except OSError:
+        pos = None
+    try:
+        try:
+            fileobj.seek(0)
+        except OSError:
+            log.warning(
+                "Skipping Fifield-style zip bomb detection: "
+                "in-memory archive is not seekable."
+            )
+            return
+
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                tmp_path = tmp.name
+                tmp.write(fileobj.read())
+            _run_overlap_detection(tmp_path, cfg)
+        finally:
+            if tmp_path is not None:
+                with suppress(OSError):
+                    os.unlink(tmp_path)
+    finally:
+        if pos is not None:
+            with suppress(OSError):
+                fileobj.seek(pos)
 
 
 def _check_zip64_consistency(info: zipfile.ZipInfo) -> None:
@@ -928,12 +965,14 @@ def validate_archive(
     zf: zipfile.ZipFile,
     max_files: int,
     max_file_size: int,
+    max_total_size: int,
 ) -> None:
     """Phase A: run all pre-extraction static checks.
 
     :param zf: An open zipfile.ZipFile instance (read-only access).
     :param max_files: Maximum number of entries permitted.
     :param max_file_size: Maximum permitted uncompressed size for any entry.
+    :param max_total_size: Maximum permitted total uncompressed size.
     :raises FileCountExceededError: If the archive has too many entries.
     :raises FileSizeExceededError: If any entry's declared size is too large.
     :raises MalformedArchiveError: If structural anomalies are detected.
@@ -950,7 +989,11 @@ def validate_archive(
         )
 
     if zf.fp is not None:
-        _check_overlapping_entries(zf.fp)
+        cfg = Config(
+            max_total_uncompressed_bytes=max_total_size,
+            max_file_count=max_files,
+        )
+        _check_overlapping_entries(zf.fp, cfg)
 
     for info in entries:
         _validate_entry(info, max_file_size)
