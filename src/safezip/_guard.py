@@ -23,9 +23,6 @@ __copyright__ = "2026 Artur Barseghyan"
 __license__ = "MIT"
 __all__ = ("validate_archive",)
 
-_ZIP64_EXTRA_TAG = 0x0001
-_ZIP64_SENTINEL = 0xFFFFFFFF
-
 
 @dataclass
 class ScanResult:
