@@ -234,6 +234,15 @@ extracted as opaque blobs. `SafeZipFile` does not auto-recurse. The
 `_nesting_depth` parameter and `NestingDepthError` exist to guard against
 runaway recursion if a caller implements manual recursion.
 
+### In-memory archives (BinaryIO) receive full overlap detection
+
+When `SafeZipFile` is instantiated with a `BinaryIO` (e.g., `BytesIO`) instead
+of a filesystem path, the Guard phase now spills the buffer to a temporary
+file to run `detect_zip_bomb()`. This ensures Fifield-style overlap detection
+and extra-field quoting checks are applied to in-memory archives, closing a
+previous bypass. The buffer position is restored after detection so the
+caller's `zipfile.ZipFile` instance is not disturbed.
+
 ---
 
 ## 6. Agent Workflow: Adding Features or Fixing Bugs
