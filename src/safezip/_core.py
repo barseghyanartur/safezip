@@ -271,7 +271,9 @@ class SafeZipFile:
 
         # Run the Guard immediately on open
         try:
-            validate_archive(self._zf, self._max_files, self._max_file_size)
+            validate_archive(
+                self._zf, self._max_files, self._max_file_size, self._max_total_size
+            )
         except FileCountExceededError:
             self._emit_event("file_count_exceeded")
             raise

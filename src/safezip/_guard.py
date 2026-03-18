@@ -61,8 +61,10 @@ SENTINEL_16 = 0xFFFF
 @dataclass
 class Config:
     max_aggregate_ratio: float = 10000.0  # Very high; let Streamer handle ratio checks
-    max_total_uncompressed_bytes: int = 1 * 1024**3
-    max_file_count: int = 1_000_000  # Very high; Guard phase handles file count limits
+    max_total_uncompressed_bytes: int = (
+        10 * 1024**3
+    )  # 10 GiB; above SafeZipFile default
+    max_file_count: int = 100_000  # Above SafeZipFile default of 10_000
     max_deflate_ratio: float = 1_032.0
     max_bzip2_ratio: float = 1_434_375.0
 
@@ -819,7 +821,9 @@ class ZipInspector:
         return ScanResult.clean()
 
 
-def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
+def _check_overlapping_entries(
+    fileobj: IO[bytes], cfg: Optional[Config] = None
+) -> None:
     """Detect Fifield-style zip bombs using comprehensive detection.
 
     This function uses `detect_zip_bomb()` to analyse the archive for overlapping
@@ -831,6 +835,7 @@ def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
     consider writing to a temporary file first.
 
     :param fileobj: A seekable binary file object.
+    :param cfg: Optional Config with limits. If not provided, uses defaults.
     :raises MalformedArchiveError: If overlapping entries are detected.
     """
     path = getattr(fileobj, "name", None)
@@ -842,7 +847,7 @@ def _check_overlapping_entries(fileobj: IO[bytes]) -> None:
         )
         return
     try:
-        result = detect_zip_bomb(path)
+        result = detect_zip_bomb(path, cfg)
     except Exception as exc:
         raise MalformedArchiveError(
             f"Failed to parse archive for overlap detection: {exc}"
@@ -927,12 +932,14 @@ def validate_archive(
     zf: zipfile.ZipFile,
     max_files: int,
     max_file_size: int,
+    max_total_size: int,
 ) -> None:
     """Phase A: run all pre-extraction static checks.
 
     :param zf: An open zipfile.ZipFile instance (read-only access).
     :param max_files: Maximum number of entries permitted.
     :param max_file_size: Maximum permitted uncompressed size for any entry.
+    :param max_total_size: Maximum permitted total uncompressed size.
     :raises FileCountExceededError: If the archive has too many entries.
     :raises FileSizeExceededError: If any entry's declared size is too large.
     :raises MalformedArchiveError: If structural anomalies are detected.
@@ -949,7 +956,11 @@ def validate_archive(
         )
 
     if zf.fp is not None:
-        _check_overlapping_entries(zf.fp)
+        cfg = Config(
+            max_total_uncompressed_bytes=max_total_size,
+            max_file_count=max_files,
+        )
+        _check_overlapping_entries(zf.fp, cfg)
 
     for info in entries:
         _validate_entry(info, max_file_size)
