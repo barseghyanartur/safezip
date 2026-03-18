@@ -5,8 +5,7 @@ import mmap
 import os
 import struct
 import zipfile
-from dataclasses import dataclass as dc
-from dataclasses import field
+from dataclasses import dataclass, field
 from typing import IO, BinaryIO, List, Optional, Tuple
 
 from ._exceptions import (
@@ -26,7 +25,7 @@ _ZIP64_EXTRA_TAG = 0x0001
 _ZIP64_SENTINEL = 0xFFFFFFFF
 
 
-@dc
+@dataclass
 class ScanResult:
     """Three-valued outcome of inspecting a zip file for overlapping records."""
 
@@ -59,7 +58,7 @@ SENTINEL_32 = 0xFFFFFFFF
 SENTINEL_16 = 0xFFFF
 
 
-@dc
+@dataclass
 class Config:
     max_aggregate_ratio: float = 10000.0  # Very high; let Streamer handle ratio checks
     max_total_uncompressed_bytes: int = 1 * 1024**3
@@ -68,7 +67,7 @@ class Config:
     max_bzip2_ratio: float = 1_434_375.0
 
 
-@dc
+@dataclass
 class FileEntry:
     filename: str
     header_offset: int
@@ -81,13 +80,13 @@ class FileEntry:
     data_end: int = 0
 
 
-@dc
+@dataclass
 class Issue:
     kind: str
     detail: str
 
 
-@dc
+@dataclass
 class DetectionResult:
     is_bomb: bool = False
     issues: List[Issue] = field(default_factory=list)
