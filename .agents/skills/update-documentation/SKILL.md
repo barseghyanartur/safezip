@@ -249,9 +249,10 @@ All code examples in AGENTS.md (and other Markdown files) should be runnable
 tests. Use the `name=` attribute to prefix the block name with `test_`:
 
 ````markdown
+<!-- pytestfixture: file_zip -->
 ```python name=test_feature_name
-
 from safezip import safe_extract, SafezipError
+
 result = safe_extract("path/to/file.zip", "/tmp/extract/")
 ```
 ````
@@ -260,10 +261,12 @@ All code examples in README.rst (and other reStructuredText files) should be
 runnable tests. Use the `:name:` attribute to prefix the block name with `test_`:
 
 ```rst
+.. pytest-fixture: file_zip
 .. code-block:: python
     :name: test_feature_name
 
    from safezip import safe_extract, SafezipError
+
    result = safe_extract("path/to/file.zip", "/tmp/extract/")
 ```
 
