@@ -23,10 +23,11 @@ When `sync-documentation` is invoked:
 
 Scan source code to identify:
 
-- **Public API**: Exports from `__all__` in `__init__.py`
-- **CLI commands**: Subcommands defined in `cli/_main.py` (`extract`, `list`)
-- **Exceptions**: Exception classes in `_exceptions.py`
-- **Classes**: `SafeZipFile` class in `_core.py`
+- **Public API**: Exports from `__all__` in `src/safezip/__init__.py`
+- **CLI commands**: Subcommands defined in `src/safezip/cli/_main.py`
+  (`extract`, `list`)
+- **Exceptions**: Exception classes in `src/safezip/_exceptions.py`
+- **Classes**: `SafeZipFile` class in `src/safezip/_core.py`
 
 ### Step 2: Scan Documentation Files
 
