@@ -269,8 +269,8 @@ runnable tests. Use the `:name:` attribute to prefix the block name with `test_`
 
 ### Cross-References
 
-- Link to related docs: ``See `\ARCHITECTURE.rst\`_``
-- Reference other sections: ``See `\Default limits\`_``
+- Link to related docs: ``See `ARCHITECTURE.rst`_``
+- Reference other sections: ``See `Default limits`_``
 
 ## Validation Checklist
 
