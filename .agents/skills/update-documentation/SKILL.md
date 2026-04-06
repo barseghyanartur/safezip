@@ -262,7 +262,7 @@ All code examples in README.rst (and other reStructuredText files) should be
 runnable tests. Use the `:name:` attribute to prefix the block name with `test_`:
 
 ```rst
-.. pytest-fixture: file_zip
+.. pytestfixture: file_zip
 .. code-block:: python
     :name: test_feature_name
 
