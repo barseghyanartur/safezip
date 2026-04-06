@@ -266,7 +266,9 @@ When asked to add a feature or fix a bug, follow these steps in order:
    - Unit test in `test_[phase].py` (e.g., `test_streamer.py`).
    - Integration test in `test_integration.py` verifying no partial files remain.
    - Legitimate-input test confirming the happy path still works.
-9. **Update `README.rst`** if the API or default limits table changed.
+9. **Update documentation** if you modify public API, CLI, or default limits,
+   by running the `update-documentation` skill after committing. It will scan
+   code vs docs and auto‑fix misalignments.
 10. **Suggest running:** Either single environement
     test `make test-env ENV=py312` or test all envionments `make test`.
 11. **Suggest running:** `make pre-commit`.
