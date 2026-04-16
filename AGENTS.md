@@ -1,7 +1,7 @@
 # AGENTS.md — safezip
 
 **Package version**: See pyproject.toml
-**Repository**: https://github.com/barseghyanartur/safezip
+**Repository**: <https://github.com/barseghyanartur/safezip>
 **Maintainer**: Artur Barseghyan <artur.barseghyan@gmail.com>
 
 This file is for AI agents and developers using AI assistants to work on or with
