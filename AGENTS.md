@@ -270,8 +270,8 @@ When asked to add a feature or fix a bug, follow these steps in order:
 9. **Update documentation** if you modify public API, CLI, or default limits,
    by running the `update-documentation` skill after committing. It will scan
    code vs docs and auto‑fix misalignments.
-10. **MUST run:** Either single environement
-    test `make test-env ENV=py312` or test all envionments `make test`.
+10. **MUST run:** Either single environment
+    test `make test-env ENV=py312` or test all environments `make test`.
 11. **MUST run:** `make pre-commit`.
 12. If `pip-audit` fails on `docs/requirements.txt`, run
     the `make compile-requirements-upgrade` command.
