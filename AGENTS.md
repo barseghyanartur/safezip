@@ -1,7 +1,7 @@
 # AGENTS.md — safezip
 
 **Package version**: See pyproject.toml
-**Repository**: https://github.com/barseghyanartur/safezip
+**Repository**: <https://github.com/barseghyanartur/safezip>
 **Maintainer**: Artur Barseghyan <artur.barseghyan@gmail.com>
 
 This file is for AI agents and developers using AI assistants to work on or with
@@ -101,7 +101,7 @@ SafeZipFile(
 All limits are overridable via environment variables:
 
 | Variable | Type | Default |
-|---|---|---|
+| --- | --- | --- |
 | `SAFEZIP_MAX_FILE_SIZE` | int (bytes) | 1 GiB |
 | `SAFEZIP_MAX_TOTAL_SIZE` | int (bytes) | 5 GiB |
 | `SAFEZIP_MAX_FILES` | int | 10 000 |
@@ -130,7 +130,7 @@ Each extraction passes through three phases in order. Each phase owns exactly
 one module. When adding a new check, identify the correct phase first.
 
 | Phase | File | Runs | Raises |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Guard** | `_guard.py` | On `SafeZipFile.__init__()`, before any decompression | `FileCountExceededError`, `FileSizeExceededError`, `MalformedArchiveError` |
 | **Sandbox** | `_sandbox.py` | Per member, before streaming begins | `UnsafeZipError` |
 | **Streamer** | `_streamer.py` | Per member, during decompression | `FileSizeExceededError`, `TotalSizeExceededError`, `CompressionRatioError` |
@@ -153,7 +153,7 @@ security event emission, and symlink policy dispatch live here.
 ### Key files
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `src/safezip/_core.py` | Public API, orchestration, env overrides, event emission |
 | `src/safezip/_guard.py` | Phase A: static pre-checks |
 | `src/safezip/_sandbox.py` | Phase B: path resolution, symlink policy |
@@ -205,8 +205,9 @@ written as regular files containing the link target path as bytes. Python's
 an actual symlink, which does not happen in the current extraction path.
 
 This is **safe**: a regular file containing the text `"../escape.txt"` is
-harmless. The README description ("full chain verification") describes intended
-future behavior, not current behavior.
+harmless. Real OS symlink creation and chain verification are
+**not yet implemented**; they are future work (see the implementation note
+below).
 
 **If asked to implement real symlink support:** in `_extract_one`, for
 `RESOLVE_INTERNAL` + `is_symlink_entry`, read the target bytes, call
@@ -269,9 +270,15 @@ When asked to add a feature or fix a bug, follow these steps in order:
 9. **Update documentation** if you modify public API, CLI, or default limits,
    by running the `update-documentation` skill after committing. It will scan
    code vs docs and auto‑fix misalignments.
-10. **Suggest running:** Either single environement
-    test `make test-env ENV=py312` or test all envionments `make test`.
-11. **Suggest running:** `make pre-commit`.
+10. **MUST run:** Either single environment
+    test `make test-env ENV=py312` or test all environments `make test`.
+11. **MUST run:** `make pre-commit`.
+12. If `pip-audit` fails on `docs/requirements.txt`, run
+    the `make compile-requirements-upgrade` command.
+    > **Note:** `docs/requirements.txt` targets Python ≥ 3.12 (built on
+    > ReadTheDocs with Python 3.14, or locally on Python 3.13). Some pinned
+    > packages (e.g. `ipython>=9`) require Python ≥ 3.12 and are intentional.
+    > Do **not** downgrade them to satisfy older Python versions.
 
 ### Acceptable new features
 
@@ -305,7 +312,7 @@ not touch the host filesystem.
 
 ### Test layout
 
-```
+```text
 src/safezip/tests/
     conftest.py          — all archive fixtures (add new ones here)
     test_guard.py        — Phase A tests
@@ -369,7 +376,7 @@ make pre-commit
 Explicitly ignored:
 
 | Rule | Reason |
-|---|---|
+| --- | --- |
 | `G004` | f-strings in logging calls are allowed |
 | `ISC003` | implicit string concatenation across lines is allowed |
 | `PERF203` | `try/except` in loops allowed in `conftest.py` only |

@@ -8,6 +8,7 @@ description: Sync safezip project documentation with source code. Scans code and
 **Operation mode**: Pure agent-based documentation synchronization.
 
 When the user asks to `sync-documentation`, the agent:
+
 1. Scans source code to extract ground truth (public API, CLI commands, exceptions)
 2. Scans all documentation files
 3. Identifies misalignments between code and docs
@@ -296,6 +297,7 @@ Do NOT modify documentation that is auto-generated or managed separately.
 ---
 
 **Use Agent-Based Sync (`sync-documentation`) when:**
+
 - User explicitly asks to "sync documentation"
 - You need documentation auto-fixed, not just validated
 - You want an interactive, conversational workflow
