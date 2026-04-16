@@ -275,6 +275,10 @@ When asked to add a feature or fix a bug, follow these steps in order:
 11. **MUST run:** `make pre-commit`.
 12. If `pip-audit` fails on `docs/requirements.txt`, run
     the `make compile-requirements-upgrade` command.
+    > **Note:** `docs/requirements.txt` targets Python ≥ 3.12 (built on
+    > ReadTheDocs with Python 3.14, or locally on Python 3.13). Some pinned
+    > packages (e.g. `ipython>=9`) require Python ≥ 3.12 and are intentional.
+    > Do **not** downgrade them to satisfy older Python versions.
 
 ### Acceptable new features
 
