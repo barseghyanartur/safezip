@@ -35,16 +35,20 @@ Hardened ZIP extraction for Python - secure by default.
     :target: https://coveralls.io/github/barseghyanartur/safezip?branch=main
     :alt: Coverage
 
-``safezip`` is a zero-dependency, production-grade wrapper around Python's
+``safezip`` is a zero-dependency, hardened wrapper around Python's
 ``zipfile`` module that defends against the most common ZIP-based attacks:
 ZipSlip path traversal, ZIP bombs, and malformed/crafted archives.
 
 Features
 ========
 
-- **ZipSlip protection** - relative traversal, absolute paths, Windows UNC
-  paths, Unicode lookalike attacks, and null bytes in filenames are all
-  blocked.
+- **ZipSlip protection** - relative traversal (``..``), absolute Unix and
+  Windows paths, Windows UNC paths, and Windows drive-relative paths are all
+  blocked. Filenames are Unicode NFC-normalised before path resolution,
+  which defeats combining-character disguises of ``..`` components. Null
+  bytes in filenames cause Python's ``zipfile`` layer to truncate the name
+  before safezip sees it; the Sandbox also checks for null bytes as
+  defence-in-depth.
 - **ZIP bomb protection** - per-member and cumulative decompression ratio
   limits abort extraction before runaway decompression can exhaust disk or
   memory.
@@ -138,7 +142,10 @@ Recursive extraction
 When an archive contains nested ``.zip`` files, set ``recursive=True`` to
 descend into them automatically. All safety limits apply at every level. Each
 nested archive is extracted into a directory named after it (without the
-extension). The ``.zip`` file itself is never written to disk.
+extension). Nested archive detection is content-based (not extension-based):
+the member is streamed to a temporary file, inspected with
+``zipfile.is_zipfile()``, and either recursed into (temp file used as input,
+then deleted) or renamed to its final destination as a plain file.
 
 .. pytestfixture: nested_file_zip
 .. code-block:: python

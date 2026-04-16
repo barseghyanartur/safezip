@@ -205,8 +205,9 @@ written as regular files containing the link target path as bytes. Python's
 an actual symlink, which does not happen in the current extraction path.
 
 This is **safe**: a regular file containing the text `"../escape.txt"` is
-harmless. The README description ("full chain verification") describes intended
-future behavior, not current behavior.
+harmless. Real OS symlink creation and chain verification are
+**not yet implemented**; they are future work (see the implementation note
+below).
 
 **If asked to implement real symlink support:** in `_extract_one`, for
 `RESOLVE_INTERNAL` + `is_symlink_entry`, read the target bytes, call
