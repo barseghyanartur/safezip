@@ -27,6 +27,10 @@ Hardened ZIP extraction for Python - secure by default.
     :target: https://safezip.readthedocs.io/en/latest/llms.txt
     :alt: llms.txt - documentation for LLMs
 
+.. image:: https://deepwiki.com/badge.svg
+    :target: https://deepwiki.com/barseghyanartur/safezip
+    :alt: Ask DeepWiki
+
 .. image:: https://img.shields.io/badge/license-MIT-blue.svg
    :target: https://github.com/barseghyanartur/safezip/#License
    :alt: MIT
