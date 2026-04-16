@@ -143,10 +143,20 @@ _DEFAULT_RECURSIVE: bool = _env_bool("SAFEZIP_RECURSIVE", False)
 
 
 def _archive_hash(file: Union[str, os.PathLike, BinaryIO]) -> str:
-    """Return first 16 hex characters of SHA-256 of archive content (first 64 KiB).
+    """
+    Get first 16 hex chars of SHA-256 of the first 64 KiB of archive content.
 
     Content-based hashing ensures different files at the same path produce
     different hashes in SecurityEvent records.
+
+    This is a **prefix fingerprint**, not a whole-archive hash. Two archives
+    that differ only after the first 64 KiB will produce the same value.  Its
+    purpose is incident correlation in SecurityEvent records (linking multiple
+    events from the same extraction session), not integrity verification.
+
+    For BinaryIO inputs the stream position is saved before reading and
+    restored afterwards so the caller's zipfile.ZipFile instance is not
+    disturbed.
     """
     h = hashlib.sha256()
     if isinstance(file, (str, os.PathLike)):
