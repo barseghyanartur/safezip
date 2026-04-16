@@ -42,7 +42,12 @@ class SecurityEvent:
     """Short string identifying what happened, e.g. 'zip_slip_detected'."""
 
     archive_hash: str
-    """First 16 hex characters of the SHA-256 hash of the archive path/name."""
+    """First 16 hex chars of SHA-256 of the **first 64 KiB** of archive content.
+
+    This is a prefix fingerprint for incident correlation, not a whole-archive
+    integrity hash. Two archives that differ only after the first 64 KiB will
+    share the same value.
+    """
 
     timestamp: float = field(default_factory=time.time)
     """Wall-clock time at the moment of detection (time.time())."""
