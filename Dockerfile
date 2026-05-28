@@ -3,7 +3,7 @@
 # Env:    docker run --rm safezip-test -e py312
 # Shell:  docker run --rm -it --entrypoint bash safezip-test
 
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
