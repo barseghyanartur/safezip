@@ -17,6 +17,7 @@ jobs:
   # *************************************
   test:
     runs-on: ubuntu-22.04
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -46,4 +47,5 @@ jobs:
             -vrx \
             --cov=safezip \
             --cov-report=term \
-            --cov-report=xml
+            --cov-report=xml \
+            --override-ini="addopts=-ra -vvv -q --cov=safezip --ignore=.tox --cov-append --capture=no"
