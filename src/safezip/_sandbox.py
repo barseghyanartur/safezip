@@ -98,8 +98,10 @@ def resolve_member_path(
 
     # 5. Confirm the resolved path is inside base
     try:
-        resolved.resolve().relative_to(base.resolve())
-    except ValueError as err:
+        resolved_real = resolved.resolve()
+        base_real = base.resolve()
+        resolved_real.relative_to(base_real)
+    except (ValueError, RuntimeError, OSError) as err:
         raise UnsafeZipError(
             f"Resolved path escapes base directory: {resolved!r} is not under {base!r}"
         ) from err
@@ -165,7 +167,7 @@ def _verify_symlink_chain(link_path: Path, base: Path) -> None:
 
         try:
             current.resolve().relative_to(base.resolve())
-        except ValueError as err:
+        except (ValueError, RuntimeError, OSError) as err:
             raise UnsafeZipError(
                 f"Symlink chain for {link_path} exits the base directory "
                 f"at {current} → {current.resolve()}"
