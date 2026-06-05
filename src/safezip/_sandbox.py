@@ -82,6 +82,10 @@ def resolve_member_path(
             part = part[2:]
             if not part:
                 continue
+            if part == "..":
+                raise UnsafeZipError(
+                    f"Path traversal detected in filename: {member_filename!r}"
+                )
         clean_parts.append(part)
 
     if not clean_parts:
@@ -94,7 +98,7 @@ def resolve_member_path(
 
     # 5. Confirm the resolved path is inside base
     try:
-        resolved.relative_to(base)
+        resolved.resolve().relative_to(base.resolve())
     except ValueError as err:
         raise UnsafeZipError(
             f"Resolved path escapes base directory: {resolved!r} is not under {base!r}"
