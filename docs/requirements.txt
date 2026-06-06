@@ -202,7 +202,7 @@ stevedore==5.8.0
     # via doc8
 tabulate==0.10.0
     # via sphinx-markdown-builder
-traitlets==5.15.0
+traitlets==5.15.1
     # via
     #   ipython
     #   matplotlib-inline
