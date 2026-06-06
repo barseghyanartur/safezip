@@ -224,7 +224,7 @@ uvicorn==0.49.0
     # via sphinx-autobuild
 watchfiles==1.2.0
     # via sphinx-autobuild
-wcwidth==0.7.0
+wcwidth==0.8.0
     # via prompt-toolkit
 websockets==16.0
     # via sphinx-autobuild
