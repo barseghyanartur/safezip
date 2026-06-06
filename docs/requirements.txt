@@ -46,7 +46,7 @@ h11==0.16.0
     # via uvicorn
 id==1.6.1
     # via twine
-idna==3.17
+idna==3.18
     # via
     #   anyio
     #   requests
