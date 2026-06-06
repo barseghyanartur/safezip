@@ -54,7 +54,7 @@ imagesize==2.0.0
     # via sphinx
 iniconfig==2.3.0
     # via pytest
-ipython==9.14.0
+ipython==9.14.1
     # via safezip (pyproject.toml)
 ipython-pygments-lexers==1.1.1
     # via ipython
