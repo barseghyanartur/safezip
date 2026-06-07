@@ -92,6 +92,28 @@ class TestLegitimateFilenames:
         assert result == tmp_path / "subdir" / "file.txt"
 
 
+class TestDrivePrefixBypass:
+    """resolve_member_path rejects ZipSlip bypass via Windows drive-prefix stripping."""
+
+    def test_dotdot_after_drive_prefix_double(self, tmp_path):
+        with pytest.raises(UnsafeZipError, match="traversal"):
+            resolve_member_path(tmp_path, "C:../C:../etc/target")
+
+    def test_dotdot_after_drive_prefix_lowercase(self, tmp_path):
+        with pytest.raises(UnsafeZipError, match="traversal"):
+            resolve_member_path(tmp_path, "c:../foo")
+
+    def test_dotdot_after_drive_prefix_various(self, tmp_path):
+        payloads = [
+            "C:../etc/passwd",
+            "c:../foo",
+            "Z:../../../etc/shadow",
+        ]
+        for payload in payloads:
+            with pytest.raises(UnsafeZipError):
+                resolve_member_path(tmp_path, payload)
+
+
 class TestPathLengthLimit:
     """resolve_member_path rejects excessively long paths."""
 

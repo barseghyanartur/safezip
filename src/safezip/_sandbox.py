@@ -155,6 +155,7 @@ def _verify_symlink_chain(link_path: Path, base: Path) -> None:
     """
     visited = set()
     current = link_path
+    base_real = base.resolve()
 
     while current.is_symlink():
         real = str(current.resolve())
@@ -166,7 +167,7 @@ def _verify_symlink_chain(link_path: Path, base: Path) -> None:
         visited.add(real)
 
         try:
-            current.resolve().relative_to(base.resolve())
+            current.resolve().relative_to(base_real)
         except (ValueError, RuntimeError, OSError) as err:
             raise UnsafeZipError(
                 f"Symlink chain for {link_path} exits the base directory "
