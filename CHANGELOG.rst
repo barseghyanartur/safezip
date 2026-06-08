@@ -30,6 +30,7 @@ are used for versioning (schema follows below):
 
   - Enhanced symlink traversal checks to detect and block chains that exit the
     sandbox boundary.
+
 - **Tests:** Added comprehensive test cases for Windows drive-prefix
   stripping (e.g., `C:../`).
 
