@@ -110,7 +110,7 @@ class TestDrivePrefixBypass:
             "Z:../../../etc/shadow",
         ]
         for payload in payloads:
-            with pytest.raises(UnsafeZipError):
+            with pytest.raises(UnsafeZipError, match="traversal"):
                 resolve_member_path(tmp_path, payload)
 
 
