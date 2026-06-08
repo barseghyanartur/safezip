@@ -1,7 +1,6 @@
 """Tests for Phase B: path resolution and symlink policy (the Sandbox)."""
 
 import os
-import sys
 
 import pytest
 
@@ -136,27 +135,18 @@ class TestDrivePrefixBypass:
         result = resolve_member_path(tmp_path, "C:subdir/file.txt")
         assert result == tmp_path / "subdir" / "file.txt"
 
-
-def _can_create_symlinks(path):
-    """Return True if we can create symlinks at *path* (requires privileges)."""
-    test_link = path / "_symlink_test"
-    test_target = path / "_symlink_target"
-    try:
-        test_target.mkdir()
-        os.symlink(str(test_target), str(test_link))
-        test_link.unlink()
-        test_target.rmdir()
-        return True
-    except (OSError, PermissionError):
-        return False
+    def test_bare_drive_no_suffix(self, tmp_path):
+        """Bare drive 'C:' strips to empty string → empty path error."""
+        with pytest.raises(UnsafeZipError, match="empty"):
+            resolve_member_path(tmp_path, "C:")
 
 
 class TestResolveContainment:
     """resolve_member_path uses .resolve() to catch symlink-based escapes."""
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink") or sys.platform == "win32",
-        reason="os.symlink not available or Windows",
+        not hasattr(os, "symlink"),
+        reason="os.symlink not available",
     )
     def test_symlink_in_base_dir_escapes(self, tmp_path):
         """Path resolving through a symlink outside base is rejected."""
@@ -173,8 +163,8 @@ class TestResolveContainment:
             resolve_member_path(base, "subdir/secret.txt")
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink") or sys.platform == "win32",
-        reason="os.symlink not available or Windows",
+        not hasattr(os, "symlink"),
+        reason="os.symlink not available",
     )
     def test_base_is_symlink(self, tmp_path):
         """Base directory is itself a symlink — both sides resolve identically."""
@@ -190,8 +180,8 @@ class TestResolveContainment:
         assert result.resolve() == real_base.resolve() / "file.txt"
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink") or sys.platform == "win32",
-        reason="os.symlink not available or Windows",
+        not hasattr(os, "symlink"),
+        reason="os.symlink not available",
     )
     def test_nested_symlink_component(self, tmp_path):
         """Chained symlinks resolving outside base are rejected."""
