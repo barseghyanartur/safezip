@@ -1,6 +1,8 @@
 """Tests for Phase B: path resolution and symlink policy (the Sandbox)."""
 
 import os
+import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +12,23 @@ from safezip._sandbox import resolve_member_path
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
 __license__ = "MIT"
+
+
+def _symlinks_available() -> bool:
+    """Return True if we can create symlinks (requires privileges on Windows)."""
+    probe_dir = Path(tempfile.gettempdir()) / "_safezip_symlink_probe"
+    try:
+        probe_dir.mkdir(exist_ok=True)
+        target = probe_dir / "target"
+        link = probe_dir / "link"
+        target.mkdir(exist_ok=True)
+        link.symlink_to(target)
+        link.unlink()
+        target.rmdir()
+        probe_dir.rmdir()
+        return True
+    except (OSError, NotImplementedError):
+        return False
 
 
 class TestPathTraversal:
@@ -145,8 +164,8 @@ class TestResolveContainment:
     """resolve_member_path uses .resolve() to catch symlink-based escapes."""
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink"),
-        reason="os.symlink not available",
+        not _symlinks_available(),
+        reason="symlink creation not available or requires elevated privileges",
     )
     def test_symlink_in_base_dir_escapes(self, tmp_path):
         """Path resolving through a symlink outside base is rejected."""
@@ -163,8 +182,8 @@ class TestResolveContainment:
             resolve_member_path(base, "subdir/secret.txt")
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink"),
-        reason="os.symlink not available",
+        not _symlinks_available(),
+        reason="symlink creation not available or requires elevated privileges",
     )
     def test_base_is_symlink(self, tmp_path):
         """Base directory is itself a symlink — both sides resolve identically."""
@@ -180,8 +199,8 @@ class TestResolveContainment:
         assert result.resolve() == real_base.resolve() / "file.txt"
 
     @pytest.mark.skipif(
-        not hasattr(os, "symlink"),
-        reason="os.symlink not available",
+        not _symlinks_available(),
+        reason="symlink creation not available or requires elevated privileges",
     )
     def test_nested_symlink_component(self, tmp_path):
         """Chained symlinks resolving outside base are rejected."""
