@@ -19,6 +19,20 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.1.7
+-----
+2026-06-08
+
+- **Security:** Fixed multiple ZipSlip bypass vulnerabilities in `_sandbox.py`.
+
+  - Improved path resolution to correctly handle cases where paths escape the
+    base directory via relative segments.
+
+  - Enhanced symlink traversal checks to detect and block chains that exit the
+    sandbox boundary.
+- **Tests:** Added comprehensive test cases for Windows drive-prefix
+  stripping (e.g., `C:../`).
+
 0.1.6
 -----
 2026-03-17
