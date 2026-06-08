@@ -46,7 +46,7 @@ h11==0.16.0
     # via uvicorn
 id==1.6.1
     # via twine
-idna==3.17
+idna==3.18
     # via
     #   anyio
     #   requests
@@ -54,7 +54,7 @@ imagesize==2.0.0
     # via sphinx
 iniconfig==2.3.0
     # via pytest
-ipython==9.13.0
+ipython==9.14.1
     # via safezip (pyproject.toml)
 ipython-pygments-lexers==1.1.1
     # via ipython
@@ -155,9 +155,9 @@ rich==15.0.0
     # via twine
 roman-numerals==4.1.0
     # via sphinx
-ruff==0.15.15
+ruff==0.15.16
     # via safezip (pyproject.toml)
-snowballstemmer==3.1.0
+snowballstemmer==3.1.1
     # via sphinx
 sphinx==9.1.0
     # via
@@ -196,13 +196,13 @@ sphinxcontrib-serializinghtml==2.0.0
     # via sphinx
 stack-data==0.6.3
     # via ipython
-starlette==1.2.0
+starlette==1.2.1
     # via sphinx-autobuild
 stevedore==5.8.0
     # via doc8
 tabulate==0.10.0
     # via sphinx-markdown-builder
-traitlets==5.15.0
+traitlets==5.15.1
     # via
     #   ipython
     #   matplotlib-inline
@@ -220,11 +220,11 @@ urllib3==2.7.0
     #   twine
 uv==0.11.17
     # via safezip (pyproject.toml)
-uvicorn==0.48.0
+uvicorn==0.49.0
     # via sphinx-autobuild
 watchfiles==1.2.0
     # via sphinx-autobuild
-wcwidth==0.7.0
+wcwidth==0.8.0
     # via prompt-toolkit
 websockets==16.0
     # via sphinx-autobuild

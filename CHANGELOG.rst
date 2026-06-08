@@ -19,6 +19,23 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.1.7
+-----
+2026-06-08
+
+- **Security:** Fixed multiple ZipSlip bypass vulnerabilities in `_sandbox.py`.
+
+  - Fixed bypass via Windows drive-prefix stripping: Filenames like
+    ``C:../etc/target`` would have the drive prefix stripped AFTER the
+    traversal check, allowing ``..`` components to escape the sandbox.
+
+  - Fixed symlink-based containment bypass: Path resolution now uses
+    ``.resolve()`` on both the target path and base directory to prevent
+    symlinks from escaping the extraction boundary.
+
+- **Tests:** Added comprehensive test coverage for drive-prefix bypass
+  variants and symlink chain escapes.
+
 0.1.6
 -----
 2026-03-17
