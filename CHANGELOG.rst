@@ -25,14 +25,16 @@ are used for versioning (schema follows below):
 
 - **Security:** Fixed multiple ZipSlip bypass vulnerabilities in `_sandbox.py`.
 
-  - Improved path resolution to correctly handle cases where paths escape the
-    base directory via relative segments.
+  - Fixed bypass via Windows drive-prefix stripping: Filenames like
+    ``C:../etc/target`` would have the drive prefix stripped AFTER the
+    traversal check, allowing ``..`` components to escape the sandbox.
 
-  - Enhanced symlink traversal checks to detect and block chains that exit the
-    sandbox boundary.
+  - Fixed symlink-based containment bypass: Path resolution now uses
+    ``.resolve()`` on both the target path and base directory to prevent
+    symlinks from escaping the extraction boundary.
 
-- **Tests:** Added comprehensive test cases for Windows drive-prefix
-  stripping (e.g., `C:../`).
+- **Tests:** Added comprehensive test coverage for drive-prefix bypass
+  variants and symlink chain escapes.
 
 0.1.6
 -----
