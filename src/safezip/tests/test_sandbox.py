@@ -1,5 +1,8 @@
 """Tests for Phase B: path resolution and symlink policy (the Sandbox)."""
 
+import os
+import sys
+
 import pytest
 
 from safezip import UnsafeZipError
@@ -112,6 +115,100 @@ class TestDrivePrefixBypass:
         for payload in payloads:
             with pytest.raises(UnsafeZipError, match="traversal"):
                 resolve_member_path(tmp_path, payload)
+
+    def test_backslash_drive_prefix(self, tmp_path):
+        """Backslash normalised to slash before drive-prefix stripping."""
+        with pytest.raises(UnsafeZipError, match="traversal"):
+            resolve_member_path(tmp_path, "C:..\\..\\foo")
+
+    def test_bare_drive_prefix_double_dot(self, tmp_path):
+        """Single part that is exactly 'X:..' strips to '..'."""
+        with pytest.raises(UnsafeZipError, match="traversal"):
+            resolve_member_path(tmp_path, "X:..")
+
+    def test_drive_prefix_multiple_traversal(self, tmp_path):
+        """Multiple '..' components after stripping are caught immediately."""
+        with pytest.raises(UnsafeZipError, match="traversal"):
+            resolve_member_path(tmp_path, "A:../../etc/passwd")
+
+    def test_drive_prefix_legitimate_relative(self, tmp_path):
+        """Stripping 'C:' from a valid relative path succeeds."""
+        result = resolve_member_path(tmp_path, "C:subdir/file.txt")
+        assert result == tmp_path / "subdir" / "file.txt"
+
+
+def _can_create_symlinks(path):
+    """Return True if we can create symlinks at *path* (requires privileges)."""
+    test_link = path / "_symlink_test"
+    test_target = path / "_symlink_target"
+    try:
+        test_target.mkdir()
+        os.symlink(str(test_target), str(test_link))
+        test_link.unlink()
+        test_target.rmdir()
+        return True
+    except (OSError, PermissionError):
+        return False
+
+
+class TestResolveContainment:
+    """resolve_member_path uses .resolve() to catch symlink-based escapes."""
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or sys.platform == "win32",
+        reason="os.symlink not available or Windows",
+    )
+    def test_symlink_in_base_dir_escapes(self, tmp_path):
+        """Path resolving through a symlink outside base is rejected."""
+        real_dir = tmp_path / "real_outside"
+        real_dir.mkdir()
+        (real_dir / "secret.txt").write_text("leaked")
+
+        base = tmp_path / "base"
+        base.mkdir()
+        evil_link = base / "subdir"
+        os.symlink(str(real_dir), str(evil_link))
+
+        with pytest.raises(UnsafeZipError, match="escapes base"):
+            resolve_member_path(base, "subdir/secret.txt")
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or sys.platform == "win32",
+        reason="os.symlink not available or Windows",
+    )
+    def test_base_is_symlink(self, tmp_path):
+        """Base directory is itself a symlink — both sides resolve identically."""
+        real_base = tmp_path / "real_base"
+        real_base.mkdir()
+
+        link_base = tmp_path / "link_base"
+        os.symlink(str(real_base), str(link_base))
+
+        result = resolve_member_path(link_base, "file.txt")
+        # Return value uses the symlink name; resolved paths must agree.
+        assert result == link_base / "file.txt"
+        assert result.resolve() == real_base.resolve() / "file.txt"
+
+    @pytest.mark.skipif(
+        not hasattr(os, "symlink") or sys.platform == "win32",
+        reason="os.symlink not available or Windows",
+    )
+    def test_nested_symlink_component(self, tmp_path):
+        """Chained symlinks resolving outside base are rejected."""
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "data.txt").write_text("secret")
+
+        base = tmp_path / "base"
+        base.mkdir()
+        # a -> b -> outside
+        b_dir = tmp_path / "b"
+        b_dir.mkdir()
+        os.symlink(str(outside), str(b_dir / "secret"))
+        os.symlink(str(b_dir), str(base / "a"))
+
+        with pytest.raises(UnsafeZipError, match="escapes base"):
+            resolve_member_path(base, "a/secret/data.txt")
 
 
 class TestPathLengthLimit:
