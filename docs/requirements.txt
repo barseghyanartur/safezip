@@ -131,7 +131,7 @@ pytest==9.0.3
     #   safezip (pyproject.toml)
     #   pytest-codeblock
     #   pytest-cov
-pytest-codeblock==0.5.8
+pytest-codeblock==0.5.9
     # via safezip (pyproject.toml)
 pytest-cov==7.1.0
     # via safezip (pyproject.toml)
