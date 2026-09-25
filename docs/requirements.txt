@@ -206,7 +206,7 @@ traitlets==5.15.1
     # via
     #   ipython
     #   matplotlib-inline
-twine==6.2.0
+twine==7.0.0
     # via safezip (pyproject.toml)
 typing-extensions==4.15.0
     # via
