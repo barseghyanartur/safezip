@@ -2,7 +2,7 @@
 #    uv pip compile --all-extras -o docs/requirements.txt pyproject.toml
 alabaster==1.0.0
     # via sphinx
-anyio==4.13.0
+anyio==4.14.2
     # via
     #   starlette
     #   watchfiles
