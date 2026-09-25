@@ -137,7 +137,7 @@ pytest-cov==7.1.0
     # via safezip (pyproject.toml)
 pyyaml==6.0.3
     # via detect-secrets
-readme-renderer==44.0
+readme-renderer==45.0
     # via twine
 requests==2.34.2
     # via
