@@ -226,7 +226,7 @@ watchfiles==1.2.0
     # via sphinx-autobuild
 wcwidth==0.8.1
     # via prompt-toolkit
-websockets==16.0
+websockets==16.1.1
     # via sphinx-autobuild
 wheel==0.47.0
     # via safezip (pyproject.toml)
