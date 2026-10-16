@@ -221,6 +221,9 @@ All limits can be overridden without changing code:
     export SAFEZIP_MAX_NESTING_DEPTH=1        # (default: 3)
     export SAFEZIP_SYMLINK_POLICY=ignore      # reject | ignore | resolve_internal (default: reject)
 
+Values that cannot be used (for example ``abc``, or ``nan``, ``inf``, ``0``
+or a negative number for a ratio) are logged and the default applies.
+
 Default limits
 ==============
 

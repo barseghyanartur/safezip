@@ -1,6 +1,8 @@
 """Tests for Phase C: streaming extraction (the Streamer)."""
 
 import io
+import os
+import stat
 import zipfile
 
 import pytest
@@ -174,3 +176,79 @@ class TestAtomicWrite:
         all_files = list(dest.rglob("*"))
         temp_files = [f for f in all_files if ".safezip_tmp_" in f.name]
         assert not temp_files
+
+
+def _plant_symlink_on_name_generation(monkeypatch, dest_dir, member, target):
+    """Simulate an attacker who wins the race for the staging file name.
+
+    The staging name ends with ``os.urandom(n).hex()``. The patched
+    ``os.urandom`` returns zeros and, at that moment, plants a symlink at the
+    resulting name, pointing at *target*.
+    """
+
+    def fake_urandom(n):
+        name = f"{member}.safezip_tmp_{os.getpid()}_{'00' * n}"
+        link = dest_dir / name
+        if not link.is_symlink():
+            os.symlink(target, link)
+        return b"\x00" * n
+
+    monkeypatch.setattr(os, "urandom", fake_urandom)
+
+
+class TestStagingFileCreation:
+    """The staging file is created exclusively and never follows a symlink."""
+
+    def _archive(self, tmp_path):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("x.txt", b"ATTACKER")
+        p = tmp_path / "x.zip"
+        p.write_bytes(buf.getvalue())
+        return p
+
+    def test_planted_symlink_is_not_followed(self, tmp_path, monkeypatch):
+        archive = self._archive(tmp_path)
+        victim = tmp_path / "victim.txt"
+        victim.write_bytes(b"ORIGINAL")
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(archive) as zf:
+            _plant_symlink_on_name_generation(monkeypatch, dest, "x.txt", victim)
+            with pytest.raises(FileExistsError):
+                zf.extractall(dest)
+
+        assert victim.read_bytes() == b"ORIGINAL"
+        assert not (dest / "x.txt").exists()
+
+    def test_planted_symlink_is_left_in_place(self, tmp_path, monkeypatch):
+        """We only ever remove a staging file we created ourselves."""
+        archive = self._archive(tmp_path)
+        victim = tmp_path / "victim.txt"
+        victim.write_bytes(b"ORIGINAL")
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(archive) as zf:
+            _plant_symlink_on_name_generation(monkeypatch, dest, "x.txt", victim)
+            with pytest.raises(FileExistsError):
+                zf.extractall(dest)
+
+        links = [f for f in dest.iterdir() if f.is_symlink()]
+        assert len(links) == 1
+
+    def test_extracted_file_mode_follows_umask(self, tmp_path):
+        """Exclusive creation must not change extracted file permissions."""
+        archive = self._archive(tmp_path)
+        dest = tmp_path / "out"
+        dest.mkdir()
+        umask = os.umask(0)
+        os.umask(umask)
+
+        with SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        mode = stat.S_IMODE((dest / "x.txt").stat().st_mode)
+        assert mode == 0o666 & ~umask
+        assert (dest / "x.txt").read_bytes() == b"ATTACKER"

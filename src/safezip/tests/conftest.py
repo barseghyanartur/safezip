@@ -23,6 +23,10 @@ __all__ = (
     "symlink_archive",
     "fifield_bomb_archive",
     "nested_dotdot_stem_archive",
+    "moderate_ratio_archive",
+    "understated_count_archive",
+    "prepended_many_files_archive",
+    "prepended_legitimate_archive",
 )
 
 
@@ -600,4 +604,66 @@ def nested_dotdot_stem_archive(tmp_path):
     data = _make_zip_bytes([("...zip", inner)])
     p = tmp_path / "nested_dotdot_stem.zip"
     p.write_bytes(data)
+    return p
+
+
+def _many_files_zip_bytes(count: int) -> bytes:
+    """Create a ZIP with *count* tiny stored members."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for i in range(count):
+            zf.writestr(f"file_{i:05d}.txt", b"x")
+    return buf.getvalue()
+
+
+@pytest.fixture()
+def moderate_ratio_archive(tmp_path):
+    """A ZIP member with a ~450:1 ratio.
+
+    Below the Guard's declared-ratio limit (1032:1) but above the Streamer's
+    default ``max_per_member_ratio`` (200:1), so only the Streamer rejects it.
+    """
+    data = bytearray(3_000_000)
+    for i in range(0, len(data), 3000):
+        data[i] = (i // 3000 * 37) % 256
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("data.bin", bytes(data))
+    p = tmp_path / "moderate_ratio.zip"
+    p.write_bytes(buf.getvalue())
+    return p
+
+
+@pytest.fixture()
+def understated_count_archive(tmp_path):
+    """15 000 entries, but the EOCD record claims there is only one.
+
+    ``zipfile`` walks the central directory by its byte size and ignores the
+    declared count, so all 15 000 entries are parsed.
+    """
+    data = bytearray(_many_files_zip_bytes(15_000))
+    eocd = len(data) - 22  # no archive comment
+    assert data[eocd : eocd + 4] == b"PK\x05\x06"
+    struct.pack_into("<HH", data, eocd + 8, 1, 1)
+    p = tmp_path / "understated_count.zip"
+    p.write_bytes(bytes(data))
+    return p
+
+
+@pytest.fixture()
+def prepended_many_files_archive(tmp_path):
+    """Self-extractor style: arbitrary bytes before a 15 000-entry ZIP."""
+    p = tmp_path / "prepended_many.zip"
+    p.write_bytes(b"MZ" + b"\x90" * 4094 + _many_files_zip_bytes(15_000))
+    return p
+
+
+@pytest.fixture()
+def prepended_legitimate_archive(tmp_path):
+    """Self-extractor style: arbitrary bytes before a small, safe ZIP."""
+    zip_bytes = _make_zip_bytes(
+        [("hello.txt", b"Hello, world!\n"), ("subdir/data.txt", b"Some data\n")]
+    )
+    p = tmp_path / "prepended_legitimate.zip"
+    p.write_bytes(b"MZ" + b"\x90" * 4094 + zip_bytes)
     return p

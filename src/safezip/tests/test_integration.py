@@ -1,6 +1,7 @@
 """End-to-end integration tests using real crafted malicious archives."""
 
 import io
+import os
 import stat
 import zipfile
 
@@ -871,3 +872,108 @@ class TestEnvVarHandling:
         original_default = _core._DEFAULT_MAX_FILES
         monkeypatch.setenv("SAFEZIP_MAX_FILES", "99")
         assert original_default == _core._DEFAULT_MAX_FILES
+
+
+class TestEnvVarValidation:
+    """Unusable limit values from the environment fall back to the default."""
+
+    @pytest.mark.parametrize("value", ["nan", "NaN", "inf", "-inf", "0", "-1", "abc"])
+    @pytest.mark.parametrize(
+        ("var", "attr"),
+        [
+            ("SAFEZIP_MAX_PER_MEMBER_RATIO", "_max_per_member_ratio"),
+            ("SAFEZIP_MAX_TOTAL_RATIO", "_max_total_ratio"),
+        ],
+    )
+    def test_invalid_ratio_env_falls_back(
+        self, legitimate_archive, monkeypatch, caplog, var, attr, value
+    ):
+        monkeypatch.setenv(var, value)
+        with SafeZipFile(legitimate_archive) as zf:
+            assert getattr(zf, attr) == 200.0
+        assert "Ignoring unusable" in caplog.text
+
+    def test_valid_ratio_env_respected(self, legitimate_archive, monkeypatch):
+        monkeypatch.setenv("SAFEZIP_MAX_PER_MEMBER_RATIO", "300")
+        with SafeZipFile(legitimate_archive) as zf:
+            assert zf._max_per_member_ratio == 300.0
+
+    def test_invalid_int_env_logged(self, legitimate_archive, monkeypatch, caplog):
+        monkeypatch.setenv("SAFEZIP_MAX_FILES", "abc")
+        with SafeZipFile(legitimate_archive) as zf:
+            assert zf._max_files == 10_000
+        assert "Ignoring unusable" in caplog.text
+
+    def test_nan_env_does_not_disable_ratio_check(
+        self, moderate_ratio_archive, monkeypatch, tmp_path
+    ):
+        with zipfile.ZipFile(moderate_ratio_archive) as zf:
+            info = zf.infolist()[0]
+            assert 200 < info.file_size / info.compress_size < 1032
+        monkeypatch.setenv("SAFEZIP_MAX_PER_MEMBER_RATIO", "nan")
+        monkeypatch.setenv("SAFEZIP_MAX_TOTAL_RATIO", "nan")
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with (
+            pytest.raises(CompressionRatioError),
+            SafeZipFile(moderate_ratio_archive) as zf,
+        ):
+            zf.extractall(dest)
+
+        remaining = [f for f in dest.rglob("*") if not f.is_dir()]
+        assert not remaining
+
+
+class TestEntryCountBeforeParsing:
+    """``max_files`` is enforced before ``zipfile`` loads the directory."""
+
+    def test_understated_count_rejected_before_parsing(
+        self, understated_count_archive, monkeypatch
+    ):
+        events = []
+
+        def _must_not_be_called(*args, **kwargs):
+            raise AssertionError("zipfile.ZipFile constructed before count check")
+
+        monkeypatch.setattr(zipfile, "ZipFile", _must_not_be_called)
+        with pytest.raises(FileCountExceededError):
+            SafeZipFile(understated_count_archive, on_security_event=events.append)
+        assert any(e.event_type == "file_count_exceeded" for e in events)
+
+    def test_bytesio_rejected_before_parsing(self, many_files_archive, monkeypatch):
+        buf = io.BytesIO(many_files_archive.read_bytes())
+
+        def _must_not_be_called(*args, **kwargs):
+            raise AssertionError("zipfile.ZipFile constructed before count check")
+
+        monkeypatch.setattr(zipfile, "ZipFile", _must_not_be_called)
+        with pytest.raises(FileCountExceededError):
+            SafeZipFile(buf)
+
+    def test_planted_staging_symlink_leaves_no_files(self, tmp_path, monkeypatch):
+        """End to end: a raced staging name never writes outside or leaves data."""
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("x.txt", b"ATTACKER")
+        archive = tmp_path / "x.zip"
+        archive.write_bytes(buf.getvalue())
+        victim = tmp_path / "victim.txt"
+        victim.write_bytes(b"ORIGINAL")
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        def fake_urandom(n):
+            link = dest / f"x.txt.safezip_tmp_{os.getpid()}_{'00' * n}"
+            if not link.is_symlink():
+                os.symlink(victim, link)
+            return b"\x00" * n
+
+        with SafeZipFile(archive) as zf:
+            monkeypatch.setattr(os, "urandom", fake_urandom)
+            with pytest.raises(FileExistsError):
+                zf.extractall(dest)
+
+        assert victim.read_bytes() == b"ORIGINAL"
+        remaining = [f for f in dest.rglob("*") if f.is_file() and not f.is_symlink()]
+        assert not remaining
