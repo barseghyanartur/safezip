@@ -639,6 +639,70 @@ class TestBuiltinRecursiveExtraction:
 
         assert (dest / "fake.zip").read_bytes() == b"this is not a zip file at all"
 
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            ("inner.zip", "inner"),
+            ("lib.WHL", "lib"),
+            ("data.csv", "data.csv"),
+            ("..zip", "..zip"),
+            ("...zip", "...zip"),
+            ("...jar", "...jar"),
+        ],
+    )
+    def test_archive_stem_never_returns_dot_components(self, name, expected):
+        """_archive_stem never yields '', '.' or '..' on any Python version."""
+        from safezip._core import _archive_stem
+
+        assert _archive_stem(name) == expected
+
+    def test_recursive_dotdot_stem_does_not_escape(
+        self, nested_dotdot_stem_archive, tmp_path
+    ):
+        """A nested archive named '...zip' must not be extracted into the
+        parent of the destination (Path('...zip').stem == '..' on < 3.14)."""
+        dest = tmp_path / "out"
+        dest.mkdir()
+
+        with SafeZipFile(nested_dotdot_stem_archive, recursive=True) as zf:
+            zf.extractall(dest)
+
+        assert not (tmp_path / "pwned.txt").exists()
+        assert (dest / "...zip" / "pwned.txt").read_bytes() == b"escaped"
+        outside = [
+            f
+            for f in tmp_path.rglob("*")
+            if not f.is_dir()
+            and dest not in f.parents
+            and f != nested_dotdot_stem_archive
+        ]
+        assert not outside
+
+    def test_recursive_nested_dest_escape_blocked(
+        self, nested_dotdot_stem_archive, tmp_path, monkeypatch
+    ):
+        """Defence in depth: if the nested destination ever resolves outside
+        the extraction root, the Sandbox rejects it and emits an event."""
+        monkeypatch.setattr("safezip._core._archive_stem", lambda name: "..")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        events = []
+
+        with (
+            pytest.raises(UnsafeZipError),
+            SafeZipFile(
+                nested_dotdot_stem_archive,
+                recursive=True,
+                on_security_event=events.append,
+            ) as zf,
+        ):
+            zf.extractall(dest)
+
+        assert [e.event_type for e in events] == ["zip_slip_detected"]
+        assert not (tmp_path / "pwned.txt").exists()
+        remaining = [f for f in dest.rglob("*") if not f.is_dir()]
+        assert not remaining
+
 
 class TestPermissionSanitisation:
     """Dangerous Unix permission bits are stripped from extracted files."""
