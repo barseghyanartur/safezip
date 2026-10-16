@@ -19,6 +19,36 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.2
+---
+2026-10-16
+
+- **Security:** Fixed a ZipSlip bypass in recursive extraction
+  (``recursive=True`` / ``--recursive``) in `_core.py`.
+
+  - On Python 3.10–3.13, ``Path("...zip").stem`` is ``..``, so a nested
+    archive member named ``...zip`` (or ``...jar``, ``...whl``, etc.) made
+    the nested extraction root resolve to the parent of the destination
+    directory. Each nesting level could climb one directory further, allowing
+    arbitrary file writes and overwrites outside the extraction root.
+    Python 3.14 was not affected.
+
+  - `_archive_stem` no longer returns ``""``, ``.`` or ``..``; such names
+    are kept unchanged.
+
+  - The nested extraction root is now re-validated by the Sandbox
+    (`resolve_member_path`). An escaping root raises ``UnsafeZipError`` and
+    emits a ``zip_slip_detected`` security event.
+
+- **Backwards incompatible:** With ``recursive=True`` on Python 3.10–3.13,
+  nested archives named ``..zip`` or ``...zip`` are now extracted into a
+  directory with that exact name (matching Python 3.14 behaviour), instead
+  of the current or parent directory.
+
+- **Tests:** Added a regression fixture (`nested_dotdot_stem_archive`) and
+  tests for `_archive_stem`, the escape attempt, and the Sandbox
+  defence-in-depth check (exception, event emission, no partial files).
+
 0.1.7
 -----
 2026-06-08

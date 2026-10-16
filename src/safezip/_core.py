@@ -50,9 +50,13 @@ def _archive_stem(name: str) -> str:
         lib.whl      → lib
         app.jar      → app
         data.csv     → data.csv   (non-archive extension unchanged)
+        ...zip       → ...zip     (never collapses to '', '.' or '..')
     """
     p = Path(name)
-    if p.suffix.lower() in _ARCHIVE_EXTENSIONS:
+    # On Python < 3.14 Path("...zip").stem is ".." and Path("..zip").stem is
+    # ".", which would turn the nested destination into a parent or current
+    # directory reference. Keep the original name in those cases.
+    if p.suffix.lower() in _ARCHIVE_EXTENSIONS and p.stem not in ("", ".", ".."):
         return p.stem
     return name
 
@@ -521,7 +525,24 @@ class SafeZipFile:
                     raise
                 # Content-based detection (avoids extension-spoofing)
                 if zipfile.is_zipfile(tmp):
-                    nested_dest = dest.parent / _archive_stem(dest.name)
+                    # Re-validate the nested root through the Sandbox so it
+                    # can never resolve outside the extraction root.
+                    nested_rel = dest.parent.relative_to(base) / _archive_stem(
+                        dest.name
+                    )
+                    try:
+                        nested_dest = resolve_member_path(base, str(nested_rel))
+                    except UnsafeZipError:
+                        self._emit_event("zip_slip_detected")
+                        log.warning(
+                            "Nested archive destination escapes base directory",
+                            extra={
+                                "event": "zip_slip_detected",
+                                "member": info.filename[:256],
+                                "archive_hash": self._archive_hash,
+                            },
+                        )
+                        raise
                     nested_dest.mkdir(parents=True, exist_ok=True)
                     with SafeZipFile(
                         tmp,
