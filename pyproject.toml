@@ -2,7 +2,7 @@
 name = "safezip"
 description = "Hardened ZIP extraction for Python - secure by default."
 readme = "README.rst"
-version = "0.2"
+version = "0.2.1"
 requires-python = ">=3.10"
 dependencies = []
 authors = [
@@ -239,7 +239,12 @@ ignore = [
     "ARCHITECTURE.rst",
     ".coderabbit.yaml",
     ".coveralls",
-    "docs/full-llms.rst",
+    # Local tooling state and agent config: not part of the published sources
+    ".agents",
+    ".claude",
+    ".markdownlint.json",
+    ".tokensave",
+    "docs/full_llms.rst",
     "docs/llms.rst",
     "docs/contributor_guidelines.rst",
     "docs/package.rst",
@@ -312,7 +317,12 @@ ignore = [
     "ARCHITECTURE.rst",
     ".coderabbit.yaml",
     ".coveralls",
-    "docs/full-llms.rst",
+    # Local tooling state and agent config: not part of the published sources
+    ".agents",
+    ".claude",
+    ".markdownlint.json",
+    ".tokensave",
+    "docs/full_llms.rst",
     "docs/llms.rst",
     "docs/contributor_guidelines.rst",
     "docs/package.rst",

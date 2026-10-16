@@ -5,7 +5,7 @@ safezip — Hardened ZIP Extraction for Python
 :Author: Artur Barseghyan
 :Status: Active
 :Date: 2026-02-25
-:Version: 0.2
+:Version: 0.2.1
 
 .. contents:: Table of Contents
    :depth: 3
