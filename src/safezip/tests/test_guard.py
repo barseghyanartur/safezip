@@ -13,7 +13,7 @@ from safezip import (
     MalformedArchiveError,
     SafeZipFile,
 )
-from safezip._guard import ScanResult, ZipInspector
+from safezip._guard import ScanResult, ZipInspector, precheck_entry_count
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
@@ -552,3 +552,124 @@ class TestZipInspector:
         cd = cdh
         raw = lfh + cd + _eocd(1, len(cd), len(lfh))
         assert self._scan(raw).is_bomb is None
+
+
+class TestEntryCountPrecheck:
+    """Guard counts central directory entries before ``zipfile`` parses them."""
+
+    def test_too_many_entries_raises(self, many_files_archive):
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(many_files_archive, 10_000)
+
+    def test_at_limit_passes(self, many_files_archive):
+        precheck_entry_count(many_files_archive, 15_000)
+
+    def test_string_path_accepted(self, many_files_archive):
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(str(many_files_archive), 10_000)
+
+    def test_understated_eocd_count_still_counted(self, understated_count_archive):
+        """The EOCD count is ignored, as ``zipfile`` ignores it."""
+        with zipfile.ZipFile(understated_count_archive) as zf:
+            assert len(zf.infolist()) == 15_000
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(understated_count_archive, 10_000)
+
+    def test_prepended_data_handled(self, prepended_many_files_archive):
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(prepended_many_files_archive, 10_000)
+
+    def test_prepended_legitimate_passes(self, prepended_legitimate_archive):
+        precheck_entry_count(prepended_legitimate_archive, 2)
+
+    def test_bytesio_position_restored(self, legitimate_archive):
+        buf = io.BytesIO(legitimate_archive.read_bytes())
+        buf.seek(7)
+        precheck_entry_count(buf, 10)
+        assert buf.tell() == 7
+
+    def test_bytesio_too_many_entries_raises(self, many_files_archive):
+        buf = io.BytesIO(many_files_archive.read_bytes())
+        buf.seek(5)
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(buf, 10_000)
+        assert buf.tell() == 5
+
+    def test_not_a_zip_is_left_to_zipfile(self, tmp_path):
+        """Unparseable input is not judged here; ``zipfile`` rejects it."""
+        p = tmp_path / "junk.zip"
+        p.write_bytes(b"not a zip at all")
+        precheck_entry_count(p, 10)
+        with pytest.raises(zipfile.BadZipFile):
+            zipfile.ZipFile(p)
+
+    def test_truncated_central_directory_is_left_to_zipfile(self, many_files_archive):
+        data = many_files_archive.read_bytes()
+        buf = io.BytesIO(data[: len(data) // 2] + data[-22:])
+        precheck_entry_count(buf, 10)
+        with pytest.raises(zipfile.BadZipFile):
+            zipfile.ZipFile(buf)
+
+    def test_unseekable_stream_is_left_to_zipfile(self, many_files_archive):
+        class Unseekable(io.BytesIO):
+            def tell(self):
+                raise OSError("unseekable")
+
+        precheck_entry_count(Unseekable(many_files_archive.read_bytes()), 10)
+
+    def test_read_error_is_left_to_zipfile(self, many_files_archive):
+        class Failing(io.BytesIO):
+            def read(self, *args):
+                raise OSError("read failed")
+
+        buf = Failing(many_files_archive.read_bytes())
+        precheck_entry_count(buf, 10)
+        assert buf.tell() == 0
+
+    def test_zipfile_internals_available(self):
+        """The pre-check relies on these; fail loudly if CPython drops them."""
+        for name in (
+            "_EndRecData",
+            "_ECD_SIZE",
+            "_ECD_LOCATION",
+            "_ECD_SIGNATURE",
+            "stringEndArchive64",
+        ):
+            assert hasattr(zipfile, name), name
+
+    def test_zip64_archive_counted(self, tmp_path):
+        """A ZIP64 directory is found on every supported CPython version."""
+        count = 0xFFFF + 2  # above 65 535 entries zipfile writes ZIP64 records
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(count):
+                zf.writestr(f"{i:x}", b"")
+        endrec = zipfile._EndRecData(buf)
+        assert endrec[zipfile._ECD_SIGNATURE] == zipfile.stringEndArchive64
+        p = tmp_path / "z64.zip"
+        p.write_bytes(buf.getvalue())
+
+        with pytest.raises(FileCountExceededError):
+            precheck_entry_count(p, count - 1)
+        precheck_entry_count(p, count)
+
+    def test_rejection_does_not_parse_central_directory(
+        self, many_files_archive, peak_traced_bytes
+    ):
+        """Rejecting costs a fraction of what ``zipfile`` needs to parse.
+
+        No patching: the peak traced allocation of a rejected ``SafeZipFile``
+        is compared with that of ``zipfile.ZipFile`` opening the same archive.
+        Before the pre-check, rejection built that ``ZipFile`` itself.
+        """
+
+        def parse():
+            zipfile.ZipFile(many_files_archive).close()
+
+        def reject():
+            with pytest.raises(FileCountExceededError):
+                SafeZipFile(many_files_archive)
+
+        parse_peak = peak_traced_bytes(parse)
+        reject_peak = peak_traced_bytes(reject)
+        assert reject_peak < parse_peak / 10, (reject_peak, parse_peak)

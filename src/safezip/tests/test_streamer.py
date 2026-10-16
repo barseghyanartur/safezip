@@ -1,6 +1,8 @@
 """Tests for Phase C: streaming extraction (the Streamer)."""
 
 import io
+import os
+import stat
 import zipfile
 
 import pytest
@@ -10,6 +12,7 @@ from safezip import (
     FileSizeExceededError,
     MalformedArchiveError,
     SafeZipFile,
+    _streamer,
 )
 
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
@@ -174,3 +177,104 @@ class TestAtomicWrite:
         all_files = list(dest.rglob("*"))
         temp_files = [f for f in all_files if ".safezip_tmp_" in f.name]
         assert not temp_files
+
+
+def _plant_at_staging_path(monkeypatch, plant):
+    """Simulate a local attacker who wins the race for the staging name.
+
+    Only ``safezip._streamer._staging_path`` is replaced. The replacement
+    calls *plant* to create an entry at a fixed name next to the destination,
+    then returns that path, as if the attacker had created it first.
+    """
+
+    def fake_staging_path(dest):
+        path = dest.parent / f"{dest.name}.safezip_tmp_planted"
+        plant(path)
+        return path
+
+    monkeypatch.setattr(_streamer, "_staging_path", fake_staging_path)
+
+
+class TestStagingFileCreation:
+    """The staging file is created exclusively and never follows a symlink."""
+
+    def _archive(self, tmp_path):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("x.txt", b"ATTACKER")
+        p = tmp_path / "x.zip"
+        p.write_bytes(buf.getvalue())
+        return p
+
+    def test_planted_symlink_is_not_followed(self, tmp_path, monkeypatch):
+        archive = self._archive(tmp_path)
+        victim = tmp_path / "victim.txt"
+        victim.write_bytes(b"ORIGINAL")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        _plant_at_staging_path(monkeypatch, lambda p: os.symlink(victim, p))
+
+        with pytest.raises(FileExistsError), SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        assert victim.read_bytes() == b"ORIGINAL"
+        assert not (dest / "x.txt").exists()
+
+    def test_planted_dangling_symlink_creates_nothing(self, tmp_path, monkeypatch):
+        """O_CREAT alone would create the link's target; O_EXCL must not."""
+        archive = self._archive(tmp_path)
+        target = tmp_path / "created_by_extractor.txt"
+        dest = tmp_path / "out"
+        dest.mkdir()
+        _plant_at_staging_path(monkeypatch, lambda p: os.symlink(target, p))
+
+        with pytest.raises(FileExistsError), SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        assert not target.exists()
+        assert not (dest / "x.txt").exists()
+
+    def test_planted_regular_file_is_not_overwritten(self, tmp_path, monkeypatch):
+        archive = self._archive(tmp_path)
+        dest = tmp_path / "out"
+        dest.mkdir()
+        _plant_at_staging_path(monkeypatch, lambda p: p.write_bytes(b"PLANTED"))
+
+        with pytest.raises(FileExistsError), SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        planted = dest / "x.txt.safezip_tmp_planted"
+        assert planted.read_bytes() == b"PLANTED"
+        assert not (dest / "x.txt").exists()
+
+    def test_planted_symlink_is_left_in_place(self, tmp_path, monkeypatch):
+        """Cleanup only ever removes a staging file safezip created itself."""
+        archive = self._archive(tmp_path)
+        victim = tmp_path / "victim.txt"
+        victim.write_bytes(b"ORIGINAL")
+        dest = tmp_path / "out"
+        dest.mkdir()
+        _plant_at_staging_path(monkeypatch, lambda p: os.symlink(victim, p))
+
+        with pytest.raises(FileExistsError), SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        assert (dest / "x.txt.safezip_tmp_planted").is_symlink()
+
+    def test_extracted_file_mode_unchanged(self, tmp_path):
+        """Exclusive creation keeps the mode a plain ``open(..., "wb")`` gives."""
+        archive = self._archive(tmp_path)
+        dest = tmp_path / "out"
+        dest.mkdir()
+        reference = tmp_path / "reference"
+        with open(reference, "wb"):
+            pass
+
+        with SafeZipFile(archive) as zf:
+            zf.extractall(dest)
+
+        extracted = dest / "x.txt"
+        assert extracted.read_bytes() == b"ATTACKER"
+        assert stat.S_IMODE(extracted.stat().st_mode) == stat.S_IMODE(
+            reference.stat().st_mode
+        )

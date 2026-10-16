@@ -36,6 +36,12 @@ class CumulativeCounters:
         self.compressed_bytes: int = 0
 
 
+def _staging_path(dest: Path) -> Path:
+    """Return the temporary path *dest* is streamed to before ``replace()``."""
+    tmp_name = f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
+    return dest.parent / tmp_name
+
+
 def stream_extract_member(
     zf: zipfile.ZipFile,
     member: zipfile.ZipInfo,
@@ -69,15 +75,24 @@ def stream_extract_member(
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
 
-    tmp_name = f"{dest.name}.safezip_tmp_{os.getpid()}_{os.urandom(4).hex()}"
-    tmp_path = dest.parent / tmp_name
+    tmp_path = _staging_path(dest)
+
+    # O_CREAT | O_EXCL fails if anything, including a symlink, already exists
+    # at tmp_path, and never follows it. This happens before the try block so
+    # a pre-existing entry is never unlinked by the cleanup below. Mode 0o666
+    # keeps the umask-derived permissions that the extracted file inherits.
+    fd = os.open(
+        tmp_path,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0),
+        0o666,
+    )
 
     # compress_size may be 0 for data-descriptor archives
     compress_size = member.compress_size
     member_bytes_written = 0
 
     try:
-        with zf.open(member, pwd=pwd) as src, open(tmp_path, "wb") as dst:
+        with os.fdopen(fd, "wb") as dst, zf.open(member, pwd=pwd) as src:
             while True:
                 chunk = src.read(_CHUNK_SIZE)
                 if not chunk:

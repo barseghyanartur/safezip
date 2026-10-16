@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import math
 import os
 import stat
 import zipfile
@@ -19,7 +20,7 @@ from ._exceptions import (
     TotalSizeExceededError,
     UnsafeZipError,
 )
-from ._guard import validate_archive
+from ._guard import precheck_entry_count, validate_archive
 from ._sandbox import check_symlink, resolve_member_path
 from ._streamer import CumulativeCounters, stream_extract_member
 
@@ -68,17 +69,31 @@ def _env_int(name: str, default: int) -> int:
     try:
         return int(val)
     except ValueError:
+        log.warning(
+            "Ignoring unusable %s value %r; using default %r.", name, val, default
+        )
         return default
 
 
 def _env_float(name: str, default: float) -> float:
+    """Read a positive, finite float limit from the environment.
+
+    ``nan`` would silently disable the comparison it is used in, so
+    non-finite and non-positive values are rejected like unparsable ones.
+    """
     val = os.environ.get(name)
     if val is None:
         return default
     try:
-        return float(val)
+        result = float(val)
     except ValueError:
+        result = math.nan
+    if not math.isfinite(result) or result <= 0:
+        log.warning(
+            "Ignoring unusable %s value %r; using default %r.", name, val, default
+        )
         return default
+    return result
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -277,6 +292,13 @@ class SafeZipFile:
                 f"Nested archive depth {_nesting_depth} exceeds "
                 f"max_nesting_depth={self._max_nesting_depth}."
             )
+
+        # Count entries before zipfile loads the whole central directory
+        try:
+            precheck_entry_count(file, self._max_files)
+        except FileCountExceededError:
+            self._emit_event("file_count_exceeded")
+            raise
 
         try:
             self._zf = zipfile.ZipFile(file, mode)
