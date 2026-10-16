@@ -22,6 +22,7 @@ __all__ = (
     "legitimate_archive",
     "symlink_archive",
     "fifield_bomb_archive",
+    "nested_dotdot_stem_archive",
 )
 
 
@@ -582,5 +583,21 @@ def fifield_bomb_archive(tmp_path):
 
     data = local_header + cd + eocd
     p = tmp_path / "fifield_bomb.zip"
+    p.write_bytes(data)
+    return p
+
+
+@pytest.fixture()
+def nested_dotdot_stem_archive(tmp_path):
+    """A ZIP whose sole member ``...zip`` is itself a ZIP containing
+    ``pwned.txt``.
+
+    On Python < 3.14 ``Path("...zip").stem`` is ``".."``, so a naive
+    recursive extractor computes the nested destination as ``<dest>/..``
+    and writes the inner members outside the extraction root.
+    """
+    inner = _make_zip_bytes([("pwned.txt", b"escaped")])
+    data = _make_zip_bytes([("...zip", inner)])
+    p = tmp_path / "nested_dotdot_stem.zip"
     p.write_bytes(data)
     return p
