@@ -5,7 +5,7 @@ safezip — Hardened ZIP Extraction for Python
 :Author: Artur Barseghyan
 :Status: Active
 :Date: 2026-02-25
-:Version: 0.2
+:Version: 0.2.1
 
 .. contents:: Table of Contents
    :depth: 3
@@ -64,9 +64,14 @@ Checks
 ~~~~~~
 
 **Sanity bounds (trusted)**
-    Verify ``len(infolist())`` against ``max_files``. Reject immediately if
+    Verify the entry count against ``max_files``. Reject immediately if
     exceeded. This check is reliable because it does not depend on
-    decompressed data.
+    decompressed data. Because ``zipfile.ZipFile`` loads the whole central
+    directory into memory when it is constructed, the count is first taken by
+    walking the directory headers in place (``precheck_entry_count()``),
+    before ``zipfile`` parses anything. Like ``zipfile``, the walk follows
+    the directory's byte size and ignores the count declared in the EOCD
+    record. ``len(infolist())`` is checked again after parsing.
 
 **ZIP64 consistency check**
     Two sub-cases are checked:
@@ -114,10 +119,11 @@ Partially trusted in the Guard
 
   .. note::
 
-     The overlap detection requires a filesystem-backed path (the file must have
-     a ``name`` attribute). For in-memory ``BinaryIO`` objects without a path,
-     the check is skipped and a warning is logged. Users extracting untrusted
-     archives from memory should write to a temporary file first.
+     The overlap detection runs on a filesystem-backed file. In-memory
+     ``BinaryIO`` objects without a ``name`` attribute are spilled to a
+     temporary file so they receive the same check; the stream position is
+     restored afterwards. Only a stream that cannot be rewound skips the
+     check, and a warning is logged.
 
 Phase B — The Sandbox (Path Manager)
 ------------------------------------
@@ -179,6 +185,11 @@ Each member is written to ``{destination}.safezip_tmp_{pid}_{random}`` and
 renamed to the final destination only after the Streamer confirms the member
 passed all checks. If an exception is raised at any point, the temporary file
 is deleted.
+
+The temporary file is created with ``O_CREAT | O_EXCL``. If anything already
+exists at that name, including a symlink planted by another local user, the
+extraction fails with ``FileExistsError`` instead of following or truncating
+it, and the existing entry is left untouched.
 
 Phase C — The Streamer (Runtime Enforcement)
 --------------------------------------------
@@ -356,7 +367,12 @@ Configuration via Environment Variables
 
 In containerised deployments, constructor arguments may not be accessible. All
 limits (numeric and policy) accept overrides from environment variables, with
-the constructor argument taking precedence:
+the constructor argument taking precedence.
+
+A value that cannot be used is logged and the default applies. For the ratio
+limits this includes ``nan``, ``inf`` and values that are zero or negative:
+``nan`` would otherwise make every ratio comparison false and silently
+disable the check.
 
 +----------------------------------------+------------------------------------+
 | Environment variable                   | Corresponding parameter            |

@@ -9,8 +9,7 @@ the contents of each key file.
 
    safezip/
    ├── docs
-   │   ├── conf.py
-   │   └── full_llms.rst
+   │   └── conf.py
    ├── src
    │   └── safezip
    │       ├── cli
@@ -40,7 +39,8 @@ the contents of each key file.
    ├── Makefile
    ├── pyproject.toml
    ├── README.rst
-   └── tox.ini
+   ├── tox.ini
+   └── uv.lock
 
 README.rst
 ----------
@@ -83,13 +83,6 @@ docs/conf.py
 .. literalinclude:: conf.py
    :language: python
    :caption: docs/conf.py
-
-docs/full_llms.rst
-------------------
-
-.. literalinclude:: full_llms.rst
-   :language: rst
-   :caption: docs/full_llms.rst
 
 pyproject.toml
 --------------

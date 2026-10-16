@@ -8,7 +8,7 @@ import tempfile
 import zipfile
 from contextlib import suppress
 from dataclasses import dataclass, field
-from typing import IO, BinaryIO, List, Optional, Tuple
+from typing import IO, Any, BinaryIO, List, Optional, Tuple, Union
 
 from ._exceptions import (
     FileCountExceededError,
@@ -21,7 +21,10 @@ log = logging.getLogger("safezip.security")
 __author__ = "Artur Barseghyan <artur.barseghyan@gmail.com>"
 __copyright__ = "2026 Artur Barseghyan"
 __license__ = "MIT"
-__all__ = ("validate_archive",)
+__all__ = (
+    "precheck_entry_count",
+    "validate_archive",
+)
 
 
 @dataclass
@@ -994,3 +997,102 @@ def validate_archive(
 
     for info in entries:
         _validate_entry(info, max_file_size)
+
+
+_CDH_SIZE = 46
+_ZIP64_RECORDS_SIZE = 56 + 20  # ZIP64 EOCD record + ZIP64 EOCD locator
+
+# zipfile internals, reused so the pre-check finds the central directory
+# exactly where zipfile.ZipFile will. Typed as Any: they are not in typeshed.
+_zipfile_internals: Any = zipfile
+
+
+def _central_directory_starts(fp: IO[bytes]) -> Tuple[List[int], int]:
+    """Return the candidate central directory offsets and its byte size.
+
+    Uses the same EOCD locator as ``zipfile.ZipFile`` so both agree on where
+    the directory is, including archives with prepended data. Some CPython
+    patch releases place a ZIP64 directory 76 bytes earlier than others, so
+    both positions are returned for ZIP64 archives.
+    """
+    zi = _zipfile_internals
+    endrec = zi._EndRecData(fp)
+    if not endrec:
+        return [], 0
+    size_cd = endrec[zi._ECD_SIZE]
+    start = endrec[zi._ECD_LOCATION] - size_cd
+    starts = [start]
+    if endrec[zi._ECD_SIGNATURE] == zi.stringEndArchive64:
+        starts.append(start - _ZIP64_RECORDS_SIZE)
+    return [s for s in starts if s >= 0], size_cd
+
+
+def _count_central_directory(
+    fp: IO[bytes], start: int, size_cd: int, max_files: int
+) -> int:
+    """Walk directory headers from *start* as ``zipfile`` does.
+
+    Like ``zipfile``, the walk is bounded by the directory's byte size and
+    ignores the entry count declared in the EOCD record. Only the fixed part
+    of each header is read, so memory use is constant. Stops at the first
+    malformed header, or once the count exceeds *max_files*.
+    """
+    fp.seek(start)
+    count = 0
+    total = 0
+    while total < size_cd and count <= max_files:
+        header = fp.read(_CDH_SIZE)
+        if len(header) != _CDH_SIZE or header[:4] != b"PK\x01\x02":
+            break
+        name_len, extra_len, comment_len = struct.unpack_from("<HHH", header, 28)
+        variable = name_len + extra_len + comment_len
+        fp.seek(variable, os.SEEK_CUR)
+        total += _CDH_SIZE + variable
+        count += 1
+    return count
+
+
+def _precheck_fileobj(fp: IO[bytes], max_files: int) -> None:
+    try:
+        starts, size_cd = _central_directory_starts(fp)
+        counts = [
+            _count_central_directory(fp, start, size_cd, max_files) for start in starts
+        ]
+    except (OSError, ValueError, struct.error, zipfile.BadZipFile):
+        return  # zipfile reports the structural problem
+    if counts and max(counts) > max_files:
+        raise FileCountExceededError(
+            f"Archive contains more than {max_files:,} entries, "
+            f"which exceeds the limit of {max_files:,}."
+        )
+
+
+def precheck_entry_count(
+    file: Union[str, "os.PathLike[str]", IO[bytes]], max_files: int
+) -> None:
+    """Phase A pre-check: enforce *max_files* before ``zipfile`` parses.
+
+    ``zipfile.ZipFile`` reads the entire central directory and builds a
+    ``ZipInfo`` for every entry while it is constructed, so a huge directory
+    costs memory before :func:`validate_archive` can count it. This counts
+    the entries in place first. Input it cannot parse is left for
+    ``zipfile`` to reject. The position of a file object is restored.
+
+    :param file: Archive path or seekable binary file object.
+    :param max_files: Maximum number of entries permitted.
+    :raises FileCountExceededError: If the archive has too many entries.
+    """
+    if isinstance(file, (str, os.PathLike)):
+        with open(file, "rb") as fp:
+            _precheck_fileobj(fp, max_files)
+        return
+
+    try:
+        pos = file.tell()
+    except (AttributeError, OSError):
+        return  # not seekable; validate_archive still counts after parsing
+    try:
+        _precheck_fileobj(file, max_files)
+    finally:
+        with suppress(OSError):
+            file.seek(pos)

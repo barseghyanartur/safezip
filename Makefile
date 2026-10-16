@@ -1,7 +1,7 @@
 .PHONY: build test test-env shell shell-env \
-        doc8 ruff mypy clean-dev clean-test clean pre-commit
+        doc8 ruff mypy clean-dev clean-test clean pre-commit source-tree
 
-VERSION := 0.2
+VERSION := 0.2.1
 SHELL := /bin/bash
 # Makefile for project
 VENV := .venv/bin/activate
@@ -57,9 +57,13 @@ mypy:
 # Documentation
 # ----------------------------------------------------------------------------
 
-# Build documentation using Sphinx and zip it
-build-docs:
+# Regenerate docs/llms.rst and docs/full_llms.rst from the source tree
+# (configured in [tool.sphinx-source-tree] in pyproject.toml)
+source-tree:
 	source $(VENV) && sphinx-source-tree
+
+# Build documentation using Sphinx and zip it
+build-docs: source-tree
 	source $(VENV) && sphinx-build -n -b text docs builddocs
 	source $(VENV) && sphinx-build -n -a -b html docs builddocs
 	cd builddocs && zip -r ../builddocs.zip . -x ".*" && cd ..

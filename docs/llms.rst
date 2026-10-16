@@ -37,7 +37,8 @@ the contents of each key file.
    ├── Makefile
    ├── pyproject.toml
    ├── README.rst
-   └── tox.ini
+   ├── tox.ini
+   └── uv.lock
 
 README.rst
 ----------

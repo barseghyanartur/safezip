@@ -19,6 +19,71 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.2.1
+-----
+2026-10-16
+
+- **Security:** ``max_files`` is now enforced before ``zipfile`` parses the
+  archive (`_guard.py`, `precheck_entry_count`).
+
+  - ``zipfile.ZipFile`` reads the whole central directory and builds a
+    ``ZipInfo`` per entry when it is constructed, so the entry-count check
+    ran only after that memory was spent, and the cost grows with the size
+    of the directory. Rejecting a 15 000-entry archive now peaks at about
+    70 KB of Python allocations, against about 9 MB for ``zipfile`` to parse
+    the same directory.
+
+  - The Guard now walks the central directory headers in place, with
+    constant memory, before ``zipfile`` is called. Like ``zipfile``, it
+    follows the directory's byte size and ignores the entry count declared
+    in the EOCD record, handles prepended data and both ZIP64 directory
+    offsets used by different CPython releases. The count after parsing is
+    kept.
+
+- **Security:** Staging files are created exclusively (`_streamer.py`).
+
+  - The temporary file was opened with ``open(path, "wb")``, which follows
+    a symlink already present at that name. A local user with write access
+    to the destination who won the race for the name could make the
+    extractor write through the link.
+
+  - The file is now created with ``O_CREAT | O_EXCL``, so extraction fails
+    with ``FileExistsError`` and the existing entry is left untouched.
+    Extracted file permissions are unchanged (``0o666`` minus the umask).
+
+- **Security:** ``SAFEZIP_MAX_PER_MEMBER_RATIO=nan`` or
+  ``SAFEZIP_MAX_TOTAL_RATIO=nan`` no longer disables the Streamer's ratio
+  checks (`_core.py`). ``nan``, ``inf``, zero and negative ratio values are
+  ignored with a warning and the default applies. Unparsable integer
+  values are now logged as well.
+
+- **Backwards incompatible:** ``SAFEZIP_MAX_*_RATIO=0`` or a negative value
+  used to reject every non-empty member; it is now ignored and the default
+  ratio applies. A raced staging file name raises ``FileExistsError``
+  instead of being overwritten.
+
+- **Documentation:**
+
+  - Corrected `ARCHITECTURE.rst`: in-memory archives are spilled to a
+    temporary file and receive overlap detection; they do not skip it.
+  - `SECURITY.rst` lists 0.2.x as supported.
+  - README documents the CLI and ``SAFEZIP_RECURSIVE``; AGENTS.md describes
+    ``recursive=True``.
+  - `docs/full_llms.rst` no longer includes itself, and local tooling
+    directories are excluded from the generated source tree. Added
+    ``make source-tree``.
+
+- **Tests:** Regression fixtures and tests for the entry-count pre-check
+  (understated EOCD count, prepended data, ZIP64, in-memory input, peak
+  memory of a rejection), a planted staging symlink, dangling symlink or
+  regular file (plain and recursive extraction), and invalid ratio
+  environment values. Security abort tests assert that no partial files
+  remain.
+
+- **Repository:** Removed ``path/to/file.zip`` and ``path/to/archive.zip``,
+  documentation-test output that had been committed by accident. tox and CI
+  create ``path/to`` themselves.
+
 0.2
 ---
 2026-10-16
