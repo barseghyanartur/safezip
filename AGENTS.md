@@ -95,6 +95,7 @@ SafeZipFile(
     max_total_ratio=200.0,
     max_nesting_depth=3,
     symlink_policy=SymlinkPolicy.REJECT,
+    recursive=False,
 )
 ```
 
@@ -109,16 +110,19 @@ All limits are overridable via environment variables:
 | `SAFEZIP_MAX_TOTAL_RATIO` | float | 200.0 |
 | `SAFEZIP_MAX_NESTING_DEPTH` | int | 3 |
 | `SAFEZIP_SYMLINK_POLICY` | str | reject |
+| `SAFEZIP_RECURSIVE` | bool (`1`/`true`/`yes`/`on`) | false |
 
 Resolution order: constructor argument > environment variable > hardcoded default.
-Invalid env values are logged and silently ignored.
+Invalid env values are logged and ignored (the default applies). Ratio values
+that are `nan`, `inf`, zero or negative count as invalid.
 
 ### What safezip does not do
 
 - **Write mode** — `SafeZipFile` is read-only. It does not expose `open()`,
   `read()`, or any write-mode methods from `zipfile.ZipFile`.
-- **Recursive extraction** — nested `.zip` members are extracted as raw files.
-  Recursion, if needed, is the caller's responsibility via `_nesting_depth`.
+- **Recursive extraction by default** — nested `.zip` members are extracted as
+  raw files unless `recursive=True` (or `--recursive` / `SAFEZIP_RECURSIVE`)
+  is set, in which case each level is guarded by `max_nesting_depth`.
 - **Create OS symlinks** — `RESOLVE_INTERNAL` extracts symlink entries as
   regular files containing the target path as bytes. See section 5.
 
@@ -135,16 +139,17 @@ one module. When adding a new check, identify the correct phase first.
 | **Sandbox** | `_sandbox.py` | Per member, before streaming begins | `UnsafeZipError` |
 | **Streamer** | `_streamer.py` | Per member, during decompression | `FileSizeExceededError`, `TotalSizeExceededError`, `CompressionRatioError` |
 
-**Guard** owns: file count limit, declared per-member size, ZIP64 consistency,
-null bytes in filenames.
+**Guard** owns: file count limit (counted in place before `zipfile` parses the
+central directory, and again after), declared per-member size, ZIP64
+consistency, null bytes in filenames, overlap (Fifield) detection.
 
 **Sandbox** owns: path traversal detection, absolute/UNC path rejection, Unicode
 NFC normalisation, null-byte rejection, path length limit, symlink policy
 (REJECT / IGNORE / RESOLVE_INTERNAL).
 
 **Streamer** owns: per-member decompressed size, cumulative total size,
-per-member ratio, cumulative ratio, atomic write contract (temp file → rename
-on success, unlink on failure).
+per-member ratio, cumulative ratio, atomic write contract (temp file created
+with `O_CREAT | O_EXCL` → rename on success, unlink on failure).
 
 **Orchestration** (`_core.py`) — `SafeZipFile` and `safe_extract`. `_extract_one`
 calls the three phases in order per member. Environment variable resolution,
@@ -228,12 +233,13 @@ content is rejected by Python's `zipfile` with `BadZipFile` (CRC failure) before
 the streamer is reached. This has been empirically verified. **Do not attempt to
 "fix" this skip.**
 
-### Nested archives are extracted as raw files
+### Nested archives are extracted as raw files by default
 
 Members with ZIP-like extensions (`.zip`, `.jar`, `.whl`, `.egg`, etc.) are
-extracted as opaque blobs. `SafeZipFile` does not auto-recurse. The
-`_nesting_depth` parameter and `NestingDepthError` exist to guard against
-runaway recursion if a caller implements manual recursion.
+extracted as opaque blobs unless `recursive=True` is set. With recursion
+enabled, each nested level is a new `SafeZipFile` with its own limits and
+`_nesting_depth`; `NestingDepthError` stops runaway recursion, including when
+a caller implements recursion manually.
 
 ### In-memory archives (BinaryIO) receive full overlap detection
 
@@ -284,7 +290,6 @@ When asked to add a feature or fix a bug, follow these steps in order:
 
 - Windows reserved filename detection (Phase B / Sandbox).
 - Additional event types for new violation categories.
-- Optional recursive extraction (caller-controlled, guarded by `_nesting_depth`).
 - Real OS symlink creation under `RESOLVE_INTERNAL` (see section 5).
 
 ### Forbidden

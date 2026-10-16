@@ -73,6 +73,8 @@ Features
 - **Environment variable overrides** - all
   limits (including ``symlink_policy``) can be set via ``SAFEZIP_*``
   environment variables for containerised deployments.
+- **Command-line interface** - ``safezip extract`` and ``safezip list``
+  apply the same secure defaults from the shell.
 
 Prerequisites
 =============
@@ -205,6 +207,34 @@ Security event monitoring
     with SafeZipFile("path/to/file.zip", on_security_event=my_monitor) as zf:
         zf.extractall("/var/files/extracted/")
 
+Command-line interface
+======================
+
+Installing the package provides a ``safezip`` command with the same secure
+defaults as the Python API:
+
+.. code-block:: sh
+
+    safezip extract path/to/file.zip /var/files/extracted/
+    safezip list path/to/file.zip
+
+Every limit can be set per invocation:
+
+.. code-block:: sh
+
+    safezip extract path/to/file.zip /var/files/extracted/ \
+        --max-file-size 104857600 \
+        --max-total-size 524288000 \
+        --max-files 1000 \
+        --max-per-member-ratio 50 \
+        --max-total-ratio 50 \
+        --max-nesting-depth 1 \
+        --symlink-policy ignore \
+        --recursive
+
+``--password`` decrypts encrypted archives. A security violation, or a missing
+or invalid archive, prints an error to stderr and exits with status 1.
+
 Environment variable overrides
 ==============================
 See the `Default limits`_ for reference.
@@ -220,6 +250,7 @@ All limits can be overridden without changing code:
     export SAFEZIP_MAX_TOTAL_RATIO=50         # (default: 200)
     export SAFEZIP_MAX_NESTING_DEPTH=1        # (default: 3)
     export SAFEZIP_SYMLINK_POLICY=ignore      # reject | ignore | resolve_internal (default: reject)
+    export SAFEZIP_RECURSIVE=true             # 1 | true | yes | on (default: false)
 
 Values that cannot be used (for example ``abc``, or ``nan``, ``inf``, ``0``
 or a negative number for a ratio) are logged and the default applies.
