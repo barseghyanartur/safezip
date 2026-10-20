@@ -216,7 +216,7 @@ urllib3==2.8.0
     #   id
     #   requests
     #   twine
-uv==0.13.1
+uv==0.13.4
     # via safezip (pyproject.toml)
 uvicorn==0.54.0
     # via sphinx-autobuild
