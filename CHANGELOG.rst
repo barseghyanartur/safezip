@@ -19,6 +19,13 @@ are used for versioning (schema follows below):
   0.3.4 to 0.4).
 - All backwards incompatible changes are mentioned in this document.
 
+0.2.1
+-----
+2026-11-25
+
+- **Bugfix:** Fixed a false positive in extra-field quoting detection for
+  directories.
+
 0.2
 ---
 2026-10-16

@@ -20,6 +20,7 @@ __all__ = (
     "null_byte_filename_archive",
     "zip64_inconsistency_archive",
     "legitimate_archive",
+    "directory_with_extra_archive",
     "symlink_archive",
     "fifield_bomb_archive",
     "nested_dotdot_stem_archive",
@@ -311,6 +312,23 @@ def legitimate_archive(tmp_path):
         zf.writestr("subdir/data.txt", b"Some data\n")
         zf.writestr("subdir/nested/deep.txt", b"Deep file\n")
     p = tmp_path / "legitimate.zip"
+    p.write_bytes(buf.getvalue())
+    return p
+
+
+@pytest.fixture()
+def directory_with_extra_archive(tmp_path):
+    """A ZIP with a directory carrying an extra field and a file."""
+    extra = struct.pack("<HH", 0x5455, 5) + struct.pack("<Bi", 1, 0)
+    empty_dir = zipfile.ZipInfo("a/")
+    empty_dir.extra = extra
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(empty_dir, b"")
+        zf.writestr("a/b.txt", b"Nothing")
+
+    p = tmp_path / "directory_with_extra.zip"
     p.write_bytes(buf.getvalue())
     return p
 
