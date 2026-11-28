@@ -281,7 +281,7 @@ def check_extra_field_quoting(entries: List[FileEntry]) -> List[FileEntry]:
     for i, e in enumerate(sorted_e[:-1]):
         next_e = sorted_e[i + 1]
         eff_extra = e.lfh_extra_len if e.lfh_extra_len >= 0 else e.cdh_extra_len
-        if eff_extra > 0 and e.data_start >= next_e.header_offset:
+        if eff_extra > 0 and e.data_start > next_e.header_offset:
             suspicious.append(e)
 
     return suspicious

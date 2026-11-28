@@ -289,6 +289,11 @@ class TestLegitimateExtraction:
         safe_extract(legitimate_archive, dest)
         assert (dest / "hello.txt").exists()
 
+    def test_directory_with_extra_field(self, directory_with_extra_archive, tmp_path):
+        dest = tmp_path / "out"
+        safe_extract(directory_with_extra_archive, dest)
+        assert (dest / "a" / "b.txt").read_bytes() == b"Nothing"
+
     def test_context_manager_closes_properly(self, legitimate_archive, tmp_path):
         dest = tmp_path / "out"
         dest.mkdir()
